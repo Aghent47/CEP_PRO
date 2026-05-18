@@ -109,15 +109,14 @@ const Dashboard: React.FC = () => {
   const { data, chartData, setChartData, selectedSubgroupSize, setSelectedSubgroupSize } = useDataStore();
   const [error, setError] = useState<string | null>(null);
   const [actualSubgroupSize, setActualSubgroupSize] = useState<number>(0);
+  const [unit, setUnit] = useState<string>("mm"); // Unidad por defecto
 
   useEffect(() => {
     if (data && data.numericData.length > 0) {
-      // Detectar automáticamente el tamaño del subgrupo basado en la primera fila
       const firstSubgroup = data.numericData[0];
       if (firstSubgroup) {
         const detectedSize = firstSubgroup.length;
         setActualSubgroupSize(detectedSize);
-        // Actualizar el tamaño seleccionado al detectado
         if (detectedSize !== selectedSubgroupSize) {
           setSelectedSubgroupSize(detectedSize);
         }
@@ -130,10 +129,8 @@ const Dashboard: React.FC = () => {
     if (!data) return;
     
     try {
-      // data.numericData ya es un array de subgrupos, cada uno con sus mediciones
       const subgroups = data.numericData;
       
-      // Verificar que todos los subgrupos tienen el mismo tamaño
       const subgroupSizes = subgroups.map(sg => sg.length);
       const uniqueSizes = [...new Set(subgroupSizes)];
       
@@ -184,19 +181,28 @@ const Dashboard: React.FC = () => {
     <DashboardContainer>
       <ConfigPanel>
         <ConfigGroup>
-          <label>Tamaño del subgrupo (n)</label>
+          <label>Tamaño del Subgrupo (n)</label>
           <select 
             value={selectedSubgroupSize}
             onChange={(e) => setSelectedSubgroupSize(Number(e.target.value))}
           >
             {[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25].map(n => (
-              <option key={n} value={n}>n = {n}</option>
+              <option key={n} value={n}>n = {n} mediciones</option>
             ))}
           </select>
         </ConfigGroup>
+        <ConfigGroup>
+          <label>Unidad de Medida</label>
+          <input 
+            type="text" 
+            value={unit}
+            onChange={(e) => setUnit(e.target.value)}
+            placeholder="Ej: mm, cm, kg, °C"
+          />
+        </ConfigGroup>
         {actualSubgroupSize > 0 && actualSubgroupSize !== selectedSubgroupSize && (
           <ConfigGroup>
-            <label>Tamaño detectado</label>
+            <label>Tamaño Detectado</label>
             <div style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.875rem' }}>
               {actualSubgroupSize} mediciones por subgrupo
             </div>
@@ -217,7 +223,7 @@ const Dashboard: React.FC = () => {
           marginBottom: '1rem',
           color: '#fca5a5'
         }}>
-          {error}
+          ❌ {error}
         </div>
       )}
 
@@ -225,39 +231,45 @@ const Dashboard: React.FC = () => {
         <>
           <StatsGrid>
             <StatCard>
-              <div className="label">Media general (X̄̄)</div>
+              <div className="label">Gran Media (X̄̄)</div>
               <div className="value">{chartData.xbar.centerLine.toFixed(4)}</div>
+              <span className="unit">{unit}</span>
             </StatCard>
             <StatCard>
-              <div className="label">Rango promedio (R̄)</div>
+              <div className="label">Rango Promedio (R̄)</div>
               <div className="value">{chartData.r.centerLine.toFixed(4)}</div>
+              <span className="unit">{unit}</span>
             </StatCard>
             <StatCard>
-              <div className="label">Sigma del proceso</div>
+              <div className="label">Sigma del Proceso</div>
               <div className="value">{calculateProcessSigma()}</div>
+              <span className="unit">{unit}</span>
             </StatCard>
             <StatCard>
-              <div className="label">Subgrupos</div>
+              <div className="label">Número de Subgrupos</div>
               <div className="value">{chartData.subgroups.length}</div>
+              <span className="unit">subgrupos</span>
             </StatCard>
           </StatsGrid>
 
           <ControlChart
-            title="Carta X̄ (Gráfico de medias)"
+            title="Carta X̄ (Gráfico de Medias)"
             values={chartData.xbar.values}
             centerLine={chartData.xbar.centerLine}
             ucl={chartData.xbar.ucl}
             lcl={chartData.xbar.lcl}
             outOfControlPoints={xbarOutOfControl}
+            unit={unit}
           />
 
           <ControlChart
-            title="Carta R (Gráfico de rangos)"
+            title="Carta R (Gráfico de Rangos)"
             values={chartData.r.values}
             centerLine={chartData.r.centerLine}
             ucl={chartData.r.ucl}
             lcl={chartData.r.lcl}
             outOfControlPoints={rOutOfControl}
+            unit={unit}
           />
         </>
       )}
