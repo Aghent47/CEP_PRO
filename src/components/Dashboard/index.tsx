@@ -184,7 +184,7 @@ const Dashboard: React.FC = () => {
     <DashboardContainer>
       <ConfigPanel>
         <ConfigGroup>
-          <label>Subgroup Size (n)</label>
+          <label>Tamaño del subgrupo (n)</label>
           <select 
             value={selectedSubgroupSize}
             onChange={(e) => setSelectedSubgroupSize(Number(e.target.value))}
@@ -196,7 +196,7 @@ const Dashboard: React.FC = () => {
         </ConfigGroup>
         {actualSubgroupSize > 0 && actualSubgroupSize !== selectedSubgroupSize && (
           <ConfigGroup>
-            <label>Detected Size</label>
+            <label>Tamaño detectado</label>
             <div style={{ padding: '0.5rem 1rem', background: 'var(--bg-secondary)', borderRadius: '8px', fontSize: '0.875rem' }}>
               {actualSubgroupSize} mediciones por subgrupo
             </div>
@@ -204,7 +204,7 @@ const Dashboard: React.FC = () => {
         )}
         <ConfigGroup>
           <label>&nbsp;</label>
-          <Button onClick={calculateChart}>Recalculate</Button>
+          <Button onClick={calculateChart}>Recalcular</Button>
         </ConfigGroup>
       </ConfigPanel>
 
@@ -225,25 +225,25 @@ const Dashboard: React.FC = () => {
         <>
           <StatsGrid>
             <StatCard>
-              <div className="label">Grand Mean (X̄̄)</div>
+              <div className="label">Media general (X̄̄)</div>
               <div className="value">{chartData.xbar.centerLine.toFixed(4)}</div>
             </StatCard>
             <StatCard>
-              <div className="label">Average Range (R̄)</div>
+              <div className="label">Rango promedio (R̄)</div>
               <div className="value">{chartData.r.centerLine.toFixed(4)}</div>
             </StatCard>
             <StatCard>
-              <div className="label">Process Sigma</div>
+              <div className="label">Sigma del proceso</div>
               <div className="value">{calculateProcessSigma()}</div>
             </StatCard>
             <StatCard>
-              <div className="label">Subgroups</div>
+              <div className="label">Subgrupos</div>
               <div className="value">{chartData.subgroups.length}</div>
             </StatCard>
           </StatsGrid>
 
           <ControlChart
-            title="X-bar Chart (Mean Control Chart)"
+            title="Carta X̄ (Gráfico de medias)"
             values={chartData.xbar.values}
             centerLine={chartData.xbar.centerLine}
             ucl={chartData.xbar.ucl}
@@ -252,7 +252,7 @@ const Dashboard: React.FC = () => {
           />
 
           <ControlChart
-            title="R Chart (Range Control Chart)"
+            title="Carta R (Gráfico de rangos)"
             values={chartData.r.values}
             centerLine={chartData.r.centerLine}
             ucl={chartData.r.ucl}

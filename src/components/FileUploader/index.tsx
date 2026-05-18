@@ -131,14 +131,14 @@ const FileUploader: React.FC = () => {
           {isLoading ? 'Procesando...' : 'Seleccionar archivo'}
         </UploadButton>
         <SupportedFormats>
-          Supports: <span>.xlsx</span> <span>.xls</span> <span>.csv</span> | Max: 50MB
+          Formatos soportados: <span>.xlsx</span> <span>.xls</span> <span>.csv</span> | Máx: 50MB
         </SupportedFormats>
       </UploadContainer>
       
       {error && <ErrorMessage>{error}</ErrorMessage>}
       {data && !error && (
         <SuccessMessage>
-          ✅ File "{fileName}" loaded successfully! ({data.columnNames.length} columns, {data.numericData[0]?.length || 0} rows)
+          ✅ Archivo "{fileName}" cargado correctamente. ({data.columnNames.length} columnas, {data.numericData[0]?.length || 0} filas)
         </SuccessMessage>
       )}
       

@@ -88,7 +88,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
         backgroundColor: 'rgba(26, 34, 53, 0.5)'
       },
       xAxis: {
-        name: 'Subgroup',
+        name: 'Subgrupo',
         nameLocation: 'middle',
         nameGap: 30,
         type: 'category',
@@ -103,7 +103,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
         axisTick: { show: false }
       },
       yAxis: {
-        name: title === 'X-bar Chart' ? 'Subgroup Mean' : 'Subgroup Range',
+        name: title.includes('X') || title.includes('X̄') ? 'Media del subgrupo' : 'Rango del subgrupo',
         nameLocation: 'middle',
         nameGap: 45,
         type: 'value',
@@ -120,7 +120,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
       },
       series: [
         {
-          name: 'Data Points',
+          name: 'Puntos',
           type: 'line',
           data: values,
           smooth: false,
@@ -142,7 +142,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
           }
         },
         {
-          name: 'Out of Control',
+          name: 'Fuera de control',
           type: 'scatter',
           data: outOfControlData,
           symbol: 'circle',
@@ -154,7 +154,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
           }
         },
         {
-          name: 'UCL',
+          name: 'LSC',
           type: 'line',
           data: Array(values.length).fill(ucl),
           lineStyle: {
@@ -165,7 +165,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
           symbol: 'none'
         },
         {
-          name: 'LCL',
+          name: 'LIC',
           type: 'line',
           data: Array(values.length).fill(lcl),
           lineStyle: {
@@ -176,7 +176,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
           symbol: 'none'
         },
         {
-          name: 'Center Line',
+          name: 'Línea central',
           type: 'line',
           data: Array(values.length).fill(centerLine),
           lineStyle: {
@@ -188,7 +188,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
         }
       ],
       legend: {
-        data: ['Data Points', 'Out of Control', 'UCL', 'LCL', 'Center Line'],
+        data: ['Puntos', 'Fuera de control', 'LSC', 'LIC', 'Línea central'],
         orient: 'horizontal',
         left: 'left',
         top: 0,
@@ -201,8 +201,8 @@ const ControlChart: React.FC<ControlChartProps> = ({
       },
       toolbox: {
         feature: {
-          saveAsImage: { title: 'Save as Image' },
-          zoom: { title: { zoom: 'Zoom', back: 'Reset' } }
+          saveAsImage: { title: 'Guardar como imagen' },
+          zoom: { title: { zoom: 'Zoom', back: 'Restablecer' } }
         },
         iconStyle: {
           borderColor: '#8f9bb3'
