@@ -1,7 +1,7 @@
 export interface ProcessedData {
   columnNames: string[];
-  numericData: number[][]; // Datos por columna (cada columna es un subgrupo o variable)
-  rawData: any[][]; // Datos originales para debugging
+  numericData: number[][];
+  rawData: (string | number | boolean | null | undefined)[][];
 }
 
 export interface UploadState {

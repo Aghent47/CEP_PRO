@@ -1,6 +1,7 @@
 import React from 'react';
 import styled from 'styled-components';
 import FileUploader from './components/FileUploader';
+import Dashboard from './components/Dashboard'; // ← Esta importación debería funcionar ahora
 import { useDataStore } from './store/dataStore';
 
 const AppContainer = styled.div`
@@ -40,90 +41,19 @@ const Container = styled.div`
   padding: 2rem;
 `;
 
-const Content = styled.main`
-  // Sin estilos adicionales por ahora
-`;
-
-const DataSummary = styled.div`
-  margin-top: 2rem;
-  padding: 1.5rem;
-  background: var(--bg-card);
-  border-radius: 16px;
-  border: 1px solid var(--border-color);
-  backdrop-filter: blur(10px);
-  
-  h3 {
-    margin-bottom: 1rem;
-    color: var(--accent-primary);
-    font-size: 1rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-  
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1.5rem;
-    
-    .stat {
-      .label {
-        font-size: 0.75rem;
-        color: var(--text-tertiary);
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 0.5rem;
-      }
-      
-      .value {
-        font-size: 2rem;
-        font-weight: 700;
-        font-family: 'JetBrains Mono', monospace;
-        background: var(--gradient-dark);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        background-clip: text;
-      }
-    }
-  }
-`;
-
 const App: React.FC = () => {
   const { data } = useDataStore();
 
   return (
     <AppContainer>
       <Header>
-        <h1>Panel de control de calidad PCS </h1>
-        <p>Control estadístico de procesos | Monitorización en tiempo real</p>
+        <h1>SPC Quality Dashboard</h1>
+        <p>Statistical Process Control | Real-time Monitoring</p>
       </Header>
       
       <Container>
-        <Content>
-          <FileUploader />
-          
-          {data && (
-            <DataSummary>
-              <h3>📊 Data Overview</h3>
-              <div className="stats">
-                <div className="stat">
-                  <div className="label">Process Variables</div>
-                  <div className="value">{data.columnNames.length}</div>
-                </div>
-                <div className="stat">
-                  <div className="label">Subgroups</div>
-                  <div className="value">{data.numericData[0]?.length || 0}</div>
-                </div>
-                <div className="stat">
-                  <div className="label">Total Measurements</div>
-                  <div className="value">
-                    {data.numericData.reduce((total: number, column: number[]) => total + column.length, 0)}
-                  </div>
-                </div>
-              </div>
-            </DataSummary>
-          )}
-        </Content>
+        <FileUploader />
+        {data && <Dashboard />}
       </Container>
     </AppContainer>
   );
