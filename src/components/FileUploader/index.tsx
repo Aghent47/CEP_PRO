@@ -136,11 +136,13 @@ const FileUploader: React.FC = () => {
       </UploadContainer>
       
       {error && <ErrorMessage>{error}</ErrorMessage>}
-      {data && !error && (
-        <SuccessMessage>
-          ✅ Archivo "{fileName}" cargado correctamente. ({data.columnNames.length} columnas, {data.numericData[0]?.length || 0} filas)
-        </SuccessMessage>
-      )}
+     
+        {data && !error && (
+          <SuccessMessage>
+            ✅ Archivo "{fileName}" cargado correctamente!<br/>
+            📊 {data.columnNames.length - 1} columnas de mediciones | 📋 {data.numericData[0]?.length || 0} mediciones por subgrupo | 🔢 {data.numericData.length} subgrupos
+          </SuccessMessage>
+        )}
       
       {renderPreview()}
     </div>

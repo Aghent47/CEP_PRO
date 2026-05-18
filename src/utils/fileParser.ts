@@ -64,9 +64,6 @@ function processData(
   // La primera fila son los encabezados
   const headers: CellValue[] = data[0];
   
-  // La primera columna es el número de subgrupo, las demás son mediciones
-  const measurementColumns: CellValue[] = headers.slice(1); // Saltamos la primera columna (Subgrupo)
-  
   // Extraer datos a partir de la fila 1 (índice 1)
   const rawRows: CellValue[][] = data.slice(1);
   
@@ -80,35 +77,75 @@ function processData(
     return;
   }
   
-  // Organizar datos por subgrupo: cada fila es un subgrupo, cada columna (excepto primera) es una medición
+  // Determinar cuántas columnas de mediciones tienen datos
+  // Para cada columna (desde la columna 1 en adelante), verificar si tiene al menos un valor numérico
+  const maxColumns = Math.max(...validRows.map((row: CellValue[]) => row.length));
+  const columnsWithData: number[] = [];
+  
+  // Analizar columna por columna (empezando desde la columna 1, que es la primera medición)
+  for (let colIdx = 1; colIdx < maxColumns; colIdx++) {
+    let hasData = false;
+    
+    for (const row of validRows) {
+      const cellValue = row[colIdx];
+      if (cellValue !== undefined && cellValue !== null && cellValue !== "") {
+        // Verificar si es un número válido
+        if (typeof cellValue === 'number') {
+          hasData = true;
+          break;
+        } else if (typeof cellValue === 'string') {
+          const cleanString = cellValue.trim().replace(',', '.');
+          const parsedNum = parseFloat(cleanString);
+          if (!isNaN(parsedNum)) {
+            hasData = true;
+            break;
+          }
+        } else if (typeof cellValue === 'boolean') {
+          hasData = true;
+          break;
+        }
+      }
+    }
+    
+    if (hasData) {
+      columnsWithData.push(colIdx);
+    }
+  }
+  
+  // Si no se detectaron columnas con datos, usar al menos la primera columna de medición
+  const measurementColumns = columnsWithData.length > 0 ? columnsWithData : [1];
+  
+  // Organizar datos por subgrupo
   const subgroups: number[][] = [];
   const subgroupLabels: number[] = [];
   
   for (const row of validRows) {
-    // La primera celda es el número de subgrupo (opcional, podemos ignorarlo o usarlo como label)
+    // La primera celda es el número de subgrupo
     const subgroupId: CellValue = row[0];
     
-    // Las siguientes celdas son las mediciones
+    // Solo extraer las columnas que tienen datos
     const measurements: number[] = [];
     
-    for (let colIdx = 1; colIdx < row.length && colIdx < headers.length; colIdx++) {
-      const cellValue: CellValue = row[colIdx];
-      let numValue: number | null = null;
-      
-      if (typeof cellValue === 'number') {
-        numValue = cellValue;
-      } else if (typeof cellValue === 'string') {
-        const cleanString: string = cellValue.trim().replace(',', '.');
-        const parsedNum: number = parseFloat(cleanString);
-        if (!isNaN(parsedNum)) {
-          numValue = parsedNum;
+    for (const colIdx of measurementColumns) {
+      if (colIdx < row.length) {
+        const cellValue: CellValue = row[colIdx];
+        let numValue: number | null = null;
+        
+        if (typeof cellValue === 'number') {
+          numValue = cellValue;
+        } else if (typeof cellValue === 'string') {
+          const cleanString: string = cellValue.trim().replace(',', '.');
+          const parsedNum: number = parseFloat(cleanString);
+          if (!isNaN(parsedNum)) {
+            numValue = parsedNum;
+          }
+        } else if (typeof cellValue === 'boolean') {
+          numValue = cellValue ? 1 : 0;
         }
-      } else if (typeof cellValue === 'boolean') {
-        numValue = cellValue ? 1 : 0;
-      }
-      
-      if (numValue !== null && !isNaN(numValue)) {
-        measurements.push(numValue);
+        
+        if (numValue !== null && !isNaN(numValue)) {
+          measurements.push(numValue);
+        }
       }
     }
     
@@ -118,7 +155,11 @@ function processData(
         const numId: number = typeof subgroupId === 'number' ? subgroupId : Number(subgroupId);
         if (!isNaN(numId)) {
           subgroupLabels.push(numId);
+        } else {
+          subgroupLabels.push(subgroups.length);
         }
+      } else {
+        subgroupLabels.push(subgroups.length);
       }
     }
   }
@@ -128,29 +169,44 @@ function processData(
     return;
   }
   
-  // Crear nombres de columnas para las mediciones
-  const columnNames: string[] = measurementColumns.map((col: CellValue, idx: number) => {
-    if (col && col !== "") {
-      return String(col).trim();
+  // Validar que todos los subgrupos tengan el mismo número de mediciones
+  const subgroupSizes = subgroups.map(sg => sg.length);
+  const uniqueSizes = [...new Set(subgroupSizes)];
+  
+  if (uniqueSizes.length > 1) {
+    reject(new Error(`Los subgrupos tienen diferente número de mediciones: ${uniqueSizes.join(', ')}. Verifica que todas las filas tengan los mismos datos.`));
+    return;
+  }
+  
+  // Crear nombres de columnas basados en las columnas que tienen datos
+  const measurementCount = measurementColumns.length;
+  const columnNames: string[] = [];
+  
+  // Usar los encabezados originales si existen y son válidos
+  for (let i = 0; i < measurementCount; i++) {
+    const colIdx = measurementColumns[i];
+    if (headers && headers[colIdx] && headers[colIdx] !== "") {
+      columnNames.push(String(headers[colIdx]).trim());
+    } else {
+      columnNames.push(`Medición ${i + 1}`);
     }
-    return `Medición ${idx + 1}`;
-  });
+  }
   
   // Añadir columna de subgrupo al inicio
   const allColumnNames: string[] = ['Subgrupo', ...columnNames];
   
-  // Reconstruir rawData para preview
+  // Reconstruir rawData para preview (solo las columnas con datos)
   const reconstructedRawData: CellValue[][] = [
     allColumnNames,
     ...subgroups.map((subgroup: number[], idx: number) => {
-      const row: CellValue[] = [subgroupLabels[idx] || idx + 1, ...subgroup];
+      const row: CellValue[] = [subgroupLabels[idx], ...subgroup];
       return row;
     })
   ];
   
   resolve({
     columnNames: allColumnNames,
-    numericData: subgroups, // Cada subgrupo es un array de mediciones
+    numericData: subgroups,
     rawData: reconstructedRawData
   });
 }
