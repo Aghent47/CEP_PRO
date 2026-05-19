@@ -12,12 +12,14 @@ export interface XRChartData {
     centerLine: number;
     ucl: number;
     lcl: number;
+    sigma: number;  // Añadido para reglas
   };
   r: {
     values: number[];
     centerLine: number;
     ucl: number;
     lcl: number;
+    sigma: number;  // Añadido para reglas
   };
   subgroups: SubgroupStats[];
   constants: {
@@ -38,12 +40,10 @@ export function validateDataForXRRChart(
   numericData: number[][],
   subgroupSize: number
 ): ValidationResult {
-  // Validar que hay al menos un subgrupo
   if (numericData.length === 0) {
     return { isValid: false, error: 'No hay datos cargados' };
   }
 
-  // Validar que cada subgrupo tiene el tamaño esperado
   for (let i = 0; i < numericData.length; i++) {
     if (numericData[i].length !== subgroupSize) {
       return {
@@ -53,12 +53,10 @@ export function validateDataForXRRChart(
     }
   }
 
-  // Validar mínimo 2 subgrupos
   if (numericData.length < 2) {
     return { isValid: false, error: 'Se necesitan al menos 2 subgrupos para el análisis' };
   }
 
-  // Validar tamaño de subgrupo entre 2 y 25
   if (subgroupSize < 2 || subgroupSize > 25) {
     return { isValid: false, error: 'El tamaño de subgrupo debe estar entre 2 y 25' };
   }
@@ -84,44 +82,42 @@ export function calculateXRChartData(
   data: number[][],
   subgroupSize: number
 ): XRChartData {
-  // Validar datos
   const validation = validateDataForXRRChart(data, subgroupSize);
   if (!validation.isValid) {
     throw new Error(validation.error);
   }
 
-  // Calcular estadísticas por subgrupo
   const subgroups = calculateSubgroupStats(data);
-  
-  // Calcular promedio de medias (X-doble-barra)
   const grandMean = subgroups.reduce((sum, sg) => sum + sg.mean, 0) / subgroups.length;
-  
-  // Calcular promedio de rangos (R-barra)
   const avgRange = subgroups.reduce((sum, sg) => sum + sg.range, 0) / subgroups.length;
-  
-  // Obtener constantes para el tamaño de subgrupo
   const constants = getConstantsForN(subgroupSize);
   
-  // Calcular límites para gráfico X-bar
+  // Calcular sigma para X-bar
+  const sigmaXbar = avgRange / constants.d2;
+  
   const xbarUcl = grandMean + constants.A2 * avgRange;
   const xbarLcl = grandMean - constants.A2 * avgRange;
   
-  // Calcular límites para gráfico R
   const rUcl = constants.D4 * avgRange;
   const rLcl = constants.D3 * avgRange;
+  
+  // Calcular sigma para R (usando d2 para estimar sigma del proceso)
+  const sigmaR = avgRange / constants.d2;
   
   return {
     xbar: {
       values: subgroups.map(sg => sg.mean),
       centerLine: grandMean,
       ucl: xbarUcl,
-      lcl: xbarLcl
+      lcl: xbarLcl,
+      sigma: sigmaXbar
     },
     r: {
       values: subgroups.map(sg => sg.range),
       centerLine: avgRange,
       ucl: rUcl,
-      lcl: rLcl
+      lcl: rLcl,
+      sigma: sigmaR
     },
     subgroups,
     constants: {

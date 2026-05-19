@@ -60,6 +60,7 @@ interface ControlChartProps {
   ucl: number;
   lcl: number;
   outOfControlPoints?: number[];
+  ruleViolationPoints?: number[];  // Añadido
   unit?: string;
 }
 
@@ -70,6 +71,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
   ucl,
   lcl,
   outOfControlPoints = [],
+  ruleViolationPoints = [],
   unit = ""
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
@@ -241,6 +243,8 @@ const ControlChart: React.FC<ControlChartProps> = ({
             borderColor: '#0a0e1a',
             borderWidth: 2
           },
+          
+          
           tooltip: {
             formatter: (params: any) => {
               return `
@@ -253,6 +257,31 @@ const ControlChart: React.FC<ControlChartProps> = ({
             }
           }
         },
+        {
+  name: 'Violaciones de Reglas',
+  type: 'scatter',
+  data: ruleViolationPoints.map(idx => ({
+    value: values[idx],
+    idx: idx
+  })),
+  symbol: 'diamond',
+  symbolSize: 16,
+  itemStyle: {
+    color: '#f59e0b',
+    borderColor: '#0a0e1a',
+    borderWidth: 2
+  },
+  tooltip: {
+    formatter: (params: any) => {
+      return `
+        <strong>⚠️ VIOLACIÓN DE REGLA</strong><br/>
+        Subgrupo ${params.dataIndex + 1}<br/>
+        Valor: ${params.value.toFixed(4)} ${unit}<br/>
+        Este punto viola una o más reglas de Nelson
+      `;
+    }
+  }
+},
         {
           name: 'Límite Superior (LCS)',
           type: 'line',
