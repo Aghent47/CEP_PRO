@@ -1,7 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import styled from 'styled-components';
 import FileUploader from './components/FileUploader';
-import Dashboard from './components/Dashboard'; // ← Esta importación debería funcionar ahora
+import Dashboard from './components/Dashboard';
+import AttributeDashboard from './components/AttributeDashboard';
+import DataTypeSelector from './components/DataTypeSelector';
 import { useDataStore } from './store/dataStore';
 
 const AppContainer = styled.div`
@@ -42,18 +44,23 @@ const Container = styled.div`
 `;
 
 const App: React.FC = () => {
-  const { data } = useDataStore();
+  const { data, dataType, setDataType } = useDataStore();
 
   return (
     <AppContainer>
       <Header>
-        <h1>Panel de control SPC</h1>
-        <p>Control Estadístico de Procesos | Monitoreo en tiempo real</p>
+        <h1>SPC Quality Dashboard</h1>
+        <p>Control Estadístico de Procesos | Monitoreo en Tiempo Real</p>
       </Header>
       
       <Container>
+        <DataTypeSelector 
+          onTypeChange={setDataType}
+          selectedType={dataType}
+        />
         <FileUploader />
-        {data && <Dashboard />}
+        {data && dataType === 'variables' && <Dashboard />}
+        {data && dataType === 'attributes' && <AttributeDashboard />}
       </Container>
     </AppContainer>
   );
