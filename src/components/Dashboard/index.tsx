@@ -9,6 +9,7 @@ import ControlChart from '../ControlChart';
 import AlarmPanel from '../AlarmPanel';
 import CapabilityInput from '../CapabilityInput';
 import CapabilityResults from '../CapabilityResults';
+import ExecutiveReport from '../ExecutiveReport';
 
 // ============ ESTILOS ============
 const DashboardContainer = styled.div`
@@ -160,7 +161,7 @@ const CleaningButton = styled.button<{ variant?: 'primary' | 'danger' }>`
 
 // ============ COMPONENTE PRINCIPAL ============
 const Dashboard: React.FC = () => {
-  const { data, chartData, setChartData, selectedSubgroupSize, setSelectedSubgroupSize } = useDataStore();
+  const { data, chartData, setChartData, selectedSubgroupSize, setSelectedSubgroupSize, fileName } = useDataStore();
   const [error, setError] = useState<string | null>(null);
   const [actualSubgroupSize, setActualSubgroupSize] = useState<number>(0);
   const [unit, setUnit] = useState<string>("mm");
@@ -454,6 +455,21 @@ const Dashboard: React.FC = () => {
           sigmaLevel={capabilityIndices.sigmaLevel}
           isStable={true}
           hasSpecs={hasSpecs}
+        />
+      )}
+
+      {phase === 'II' && chartData && (
+        <ExecutiveReport
+          fileName={fileName || 'Sin nombre'}
+          chartData={chartData}
+          capabilityIndices={capabilityIndices}
+          unit={unit}
+          lie={lie}
+          lse={lse}
+          xbarViolations={xbarViolations}
+          rViolations={rViolations}
+          removedSubgroups={removedSubgroups}
+          originalSubgroupsCount={data?.numericData.length || 0}
         />
       )}
 
