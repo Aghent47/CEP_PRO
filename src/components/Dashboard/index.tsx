@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { calculateXRChartData, detectOutOfControlPoints } from '../../utils/spcCalculations';
@@ -44,7 +44,7 @@ const ConfigGroup = styled.div`
     color: var(--text-primary);
     font-size: 0.875rem;
     cursor: pointer;
-    min-width: 180px;
+    min-width: 200px;
     
     &:hover {
       border-color: var(--accent-primary);
@@ -165,52 +165,54 @@ const Dashboard: React.FC = () => {
   const [phase, setPhase] = useState<'I' | 'II'>('I');
   const [removedSubgroups, setRemovedSubgroups] = useState<number[]>([]);
 
-  useEffect(() => {
-    if (data && data.numericData.length > 0) {
-      const firstSubgroup = data.numericData[0];
-      if (firstSubgroup) {
-        const detectedSize = firstSubgroup.length;
-        setActualSubgroupSize(detectedSize);
-        if (detectedSize !== selectedSubgroupSize) {
-          setSelectedSubgroupSize(detectedSize);
-        }
-      }
-      calculateChart();
-    }
-  }, [data, selectedSubgroupSize, removedSubgroups]);
-
-  const calculateChart = () => {
+  // Función para recalcular - la vamos a llamar manualmente cuando sea necesario
+  const calculateChart = useCallback(() => {
     if (!data) return;
     
     try {
-      let subgroups = data.numericData;
-      if (removedSubgroups.length > 0) {
-        subgroups = data.numericData.filter((_, idx) => !removedSubgroups.includes(idx));
+      // Obtener los datos originales
+      let originalSubgroups = data.numericData;
+      
+      // Aplicar filtro de subgrupos removidos si estamos en Fase I
+      let subgroups = originalSubgroups;
+      if (phase === 'I' && removedSubgroups.length > 0) {
+        subgroups = originalSubgroups.filter((_, idx) => !removedSubgroups.includes(idx));
       }
       
       if (subgroups.length < 2) {
-        setError('Se necesitan al menos 2 subgrupos después de la limpieza');
+        setError('Se necesitan al menos 2 subgrupos para el análisis');
         setChartData(null);
         return;
       }
       
+      // Verificar que todos los subgrupos tengan al menos el tamaño seleccionado
       const subgroupSizes = subgroups.map(sg => sg.length);
-      const uniqueSizes = [...new Set(subgroupSizes)];
+      const minSize = Math.min(...subgroupSizes);
       
-      if (uniqueSizes.length > 1) {
-        setError(`Los subgrupos tienen tamaños diferentes: ${uniqueSizes.join(', ')}`);
+      if (selectedSubgroupSize > minSize) {
+        setError(`El tamaño de subgrupo seleccionado (${selectedSubgroupSize}) es mayor que el número de mediciones disponibles (${minSize}). Reduce el tamaño.`);
         setChartData(null);
         return;
       }
       
-      const actualSize = uniqueSizes[0];
-      if (actualSize !== selectedSubgroupSize) {
-        setSelectedSubgroupSize(actualSize);
+      // Recortar cada subgrupo al tamaño seleccionado (tomar las primeras N mediciones)
+      const trimmedSubgroups = subgroups.map(sg => sg.slice(0, selectedSubgroupSize));
+      
+      // Verificar que todos los subgrupos tengan el tamaño correcto después del recorte
+      const trimmedSizes = trimmedSubgroups.map(sg => sg.length);
+      const uniqueSizes = [...new Set(trimmedSizes)];
+      
+      if (uniqueSizes.length > 1 || uniqueSizes[0] !== selectedSubgroupSize) {
+        setError(`Error al ajustar los subgrupos al tamaño ${selectedSubgroupSize}`);
+        setChartData(null);
+        return;
       }
       
-      const result = calculateXRChartData(subgroups, actualSize);
+      // Calcular los gráficos con los subgrupos ajustados
+      const result = calculateXRChartData(trimmedSubgroups, selectedSubgroupSize);
       setChartData(result);
       
+      // Aplicar reglas de Nelson
       const xbarViolationsList = applyAllNelsonRules(
         result.xbar.values,
         result.xbar.centerLine,
@@ -234,7 +236,36 @@ const Dashboard: React.FC = () => {
       setError(err instanceof Error ? err.message : 'Error al calcular gráficos');
       setChartData(null);
     }
-  };
+  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartData]);
+
+  // Efecto para detectar el tamaño real de los datos
+  useEffect(() => {
+    if (data && data.numericData.length > 0) {
+      const firstSubgroup = data.numericData[0];
+      if (firstSubgroup) {
+        const detectedSize = firstSubgroup.length;
+        setActualSubgroupSize(detectedSize);
+        // Solo cambiar el tamaño seleccionado si el detectado es menor
+        if (detectedSize < selectedSubgroupSize) {
+          setSelectedSubgroupSize(detectedSize);
+        }
+      }
+    }
+  }, [data]);
+
+  // Efecto para recalcular cuando cambia el tamaño del subgrupo
+  useEffect(() => {
+    if (data && data.numericData.length > 0) {
+      calculateChart();
+    }
+  }, [selectedSubgroupSize, calculateChart, data]);
+
+  // Efecto para recalcular cuando cambian los subgrupos removidos (solo Fase I)
+  useEffect(() => {
+    if (data && data.numericData.length > 0 && phase === 'I') {
+      calculateChart();
+    }
+  }, [removedSubgroups, calculateChart, data, phase]);
 
   const xbarOutOfControl = chartData ? detectOutOfControlPoints(
     chartData.xbar.values,
@@ -268,17 +299,37 @@ const Dashboard: React.FC = () => {
     setRemovedSubgroups([]);
   };
 
+  const handleSubgroupSizeChange = (newSize: number) => {
+    setSelectedSubgroupSize(newSize);
+    // Limpiar subgrupos removidos al cambiar el tamaño
+    if (phase === 'I' && removedSubgroups.length > 0) {
+      setRemovedSubgroups([]);
+    }
+  };
+
   const hasViolations = xbarViolations.length > 0 || rViolations.length > 0;
   const totalOutOfControl = xbarOutOfControl.length + rOutOfControl.length;
+  const totalViolations = xbarRuleViolations.length + rRuleViolations.length;
 
   if (!data) return null;
+
+  // Determinar las opciones disponibles para el tamaño de subgrupo
+  const availableSizes = [];
+  for (let i = 2; i <= Math.min(25, actualSubgroupSize); i++) {
+    availableSizes.push(i);
+  }
 
   return (
     <DashboardContainer>
       <ConfigPanel>
         <ConfigGroup>
           <label>Fase de Análisis</label>
-          <select value={phase} onChange={(e) => setPhase(e.target.value as 'I' | 'II')}>
+          <select value={phase} onChange={(e) => {
+            setPhase(e.target.value as 'I' | 'II');
+            if (e.target.value === 'I' && removedSubgroups.length > 0) {
+              setRemovedSubgroups([]);
+            }
+          }}>
             <option value="I">Fase I - Estabilización (Limpieza de datos)</option>
             <option value="II">Fase II - Monitoreo (Capacidad)</option>
           </select>
@@ -287,13 +338,17 @@ const Dashboard: React.FC = () => {
           <label>Tamaño del Subgrupo (n)</label>
           <select 
             value={selectedSubgroupSize}
-            onChange={(e) => setSelectedSubgroupSize(Number(e.target.value))}
-            disabled={phase === 'I' && removedSubgroups.length > 0}
+            onChange={(e) => handleSubgroupSizeChange(Number(e.target.value))}
           >
-            {[2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25].map(n => (
+            {availableSizes.map(n => (
               <option key={n} value={n}>n = {n} mediciones</option>
             ))}
           </select>
+          {actualSubgroupSize > 0 && actualSubgroupSize !== selectedSubgroupSize && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--warning)', marginTop: '0.25rem' }}>
+              ⚠️ Datos tienen {actualSubgroupSize} mediciones. Usando primeras {selectedSubgroupSize}
+            </div>
+          )}
         </ConfigGroup>
         <ConfigGroup>
           <label>Unidad de Medida</label>
@@ -316,8 +371,8 @@ const Dashboard: React.FC = () => {
             {removedSubgroups.length > 0 ? (
               <>🗑️ Subgrupos removidos: <strong>{removedSubgroups.map(i => i + 1).join(', ')}</strong></>
             ) : (
-              <>📊 {totalOutOfControl > 0 || hasViolations ? 
-                `Se detectaron ${totalOutOfControl + xbarRuleViolations.length + rRuleViolations.length} puntos problemáticos` : 
+              <>📊 {totalOutOfControl > 0 || totalViolations > 0 ? 
+                `Se detectaron ${totalOutOfControl + totalViolations} puntos problemáticos` : 
                 '✅ Proceso estable - No se detectaron problemas'}
               </>
             )}
@@ -325,7 +380,7 @@ const Dashboard: React.FC = () => {
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <CleaningButton 
               onClick={handleRemoveOutOfControl}
-              disabled={!(totalOutOfControl > 0 || hasViolations)}
+              disabled={!(totalOutOfControl > 0 || totalViolations > 0)}
               variant="danger"
             >
               Eliminar puntos problemáticos
