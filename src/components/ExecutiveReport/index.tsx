@@ -326,7 +326,7 @@ Unidad: ${unit}
 ------------------------------------------------------------
 ESTABILIDAD: ${stability.text}
 ------------------------------------------------------------
-${totalViolations > 0 ? `Alertas detectadas: ${totalViolaciones} violación(es) de reglas` : 'Sin puntos fuera de control'}
+${totalViolations > 0 ? `Alertas detectadas: ${totalViolations} violación(es) de reglas` : 'Sin puntos fuera de control'}
 Subgrupos eliminados: ${removedSubgroups.length > 0 ? removedSubgroups.map(i => i + 1).join(', ') : 'Ninguno'}
 
 ------------------------------------------------------------
