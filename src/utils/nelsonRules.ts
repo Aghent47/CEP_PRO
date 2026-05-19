@@ -2,7 +2,7 @@ export interface NelsonViolation {
   ruleId: number;
   ruleName: string;
   description: string;
-  points: number[]; // Índices de subgrupos que violan la regla
+  points: number[];
   severity: 'high' | 'medium' | 'low';
 }
 
@@ -44,7 +44,32 @@ export function calculateZones(
   });
 }
 
-// Regla 1: Cualquier punto fuera de los límites de control (3σ)
+// Calcular límites de zona sin sigma explícito (método simplificado)
+export function calculateZoneLimits(
+  centerLine: number,
+  ucl: number,
+  lcl: number
+): {
+  zoneAPlus: number;
+  zoneBPlus: number;
+  zoneCPlus: number;
+  zoneCMinus: number;
+  zoneBMinus: number;
+  zoneAMinus: number;
+} {
+  const sigmaWidth = (ucl - centerLine) / 3;
+  
+  return {
+    zoneAPlus: ucl,
+    zoneBPlus: centerLine + (2 * sigmaWidth),
+    zoneCPlus: centerLine + sigmaWidth,
+    zoneCMinus: centerLine - sigmaWidth,
+    zoneBMinus: centerLine - (2 * sigmaWidth),
+    zoneAMinus: lcl
+  };
+}
+
+// ============ REGLA 1: Punto fuera de límites 3σ ============
 export function rule1OutOfControl(
   values: number[],
   ucl: number,
@@ -62,7 +87,7 @@ export function rule1OutOfControl(
     return {
       ruleId: 1,
       ruleName: "Regla 1 - Fuera de Control",
-      description: `Un punto fuera de los límites de control (3σ)`,
+      description: `Uno o más puntos fuera de los límites de control (3σ)`,
       points: outOfControlPoints,
       severity: 'high'
     };
@@ -70,7 +95,7 @@ export function rule1OutOfControl(
   return null;
 }
 
-// Regla 2: Dos de tres puntos consecutivos en la zona A (2σ-3σ) o más allá
+// ============ REGLA 2: 2 de 3 puntos en zona A ============
 export function rule2TwoOfThreeInZoneA(
   values: number[],
   centerLine: number,
@@ -93,8 +118,8 @@ export function rule2TwoOfThreeInZoneA(
   if (violations.length > 0) {
     return {
       ruleId: 2,
-      ruleName: "Regla 2 - Zona A",
-      description: `Dos de tres puntos consecutivos en la zona A (2σ-3σ)`,
+      ruleName: "Regla 2 - Zona A (2σ-3σ)",
+      description: `Dos de tres puntos consecutivos en la zona A (2σ-3σ) o más allá`,
       points: [...new Set(violations)],
       severity: 'high'
     };
@@ -102,7 +127,7 @@ export function rule2TwoOfThreeInZoneA(
   return null;
 }
 
-// Regla 3: Cuatro de cinco puntos consecutivos en la zona B (1σ-2σ) o más allá
+// ============ REGLA 3: 4 de 5 puntos en zona B ============
 export function rule3FourOfFiveInZoneB(
   values: number[],
   centerLine: number,
@@ -125,7 +150,7 @@ export function rule3FourOfFiveInZoneB(
   if (violations.length > 0) {
     return {
       ruleId: 3,
-      ruleName: "Regla 3 - Zona B",
+      ruleName: "Regla 3 - Zona B (1σ-2σ)",
       description: `Cuatro de cinco puntos consecutivos en la zona B (1σ-2σ) o más allá`,
       points: [...new Set(violations)],
       severity: 'medium'
@@ -134,7 +159,7 @@ export function rule3FourOfFiveInZoneB(
   return null;
 }
 
-// Regla 4: Ocho puntos consecutivos del mismo lado de la línea central
+// ============ REGLA 4: 8 puntos del mismo lado ============
 export function rule4EightOnSameSide(
   values: number[],
   centerLine: number
@@ -173,7 +198,7 @@ export function rule4EightOnSameSide(
   if (violations.length > 0) {
     return {
       ruleId: 4,
-      ruleName: "Regla 4 - Tendencia Central",
+      ruleName: "Regla 4 - Racha del mismo lado",
       description: `Ocho puntos consecutivos del mismo lado de la línea central`,
       points: [...new Set(violations)],
       severity: 'medium'
@@ -182,7 +207,7 @@ export function rule4EightOnSameSide(
   return null;
 }
 
-// Regla 5: Seis puntos consecutivos en tendencia (creciente o decreciente)
+// ============ REGLA 5: 6 puntos en tendencia ============
 export function rule5SixPointTrend(
   values: number[]
 ): NelsonViolation | null {
@@ -229,7 +254,7 @@ export function rule5SixPointTrend(
   return null;
 }
 
-// Regla 6: Catorce puntos consecutivos alternando arriba y abajo
+// ============ REGLA 6: 14 puntos alternando arriba/abajo (patrón cíclico) ============
 export function rule6FourteenAlternating(
   values: number[],
   centerLine: number
@@ -257,8 +282,8 @@ export function rule6FourteenAlternating(
   if (violations.length > 0) {
     return {
       ruleId: 6,
-      ruleName: "Regla 6 - Alternancia",
-      description: `Catorce puntos consecutivos alternando arriba y abajo de la línea central`,
+      ruleName: "Regla 6 - Patrón Cíclico",
+      description: `Catorce puntos consecutivos alternando arriba y abajo de la línea central (patrón cíclico)`,
       points: [...new Set(violations)],
       severity: 'low'
     };
@@ -266,7 +291,81 @@ export function rule6FourteenAlternating(
   return null;
 }
 
-// Función principal que ejecuta todas las reglas
+// ============ REGLA 7: 1 punto en zona A pero dentro de límites (cerca del límite) ============
+export function rule7OnePointInZoneA(
+  values: number[],
+  centerLine: number,
+  ucl: number,
+  lcl: number
+): NelsonViolation | null {
+  const violations: number[] = [];
+  const sigma = (ucl - centerLine) / 3;
+  const zoneAUpper = centerLine + (2 * sigma);
+  const zoneALower = centerLine - (2 * sigma);
+  
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    // Punto en zona A pero dentro de límites (no fuera)
+    if ((value > zoneAUpper && value < ucl) || (value < zoneALower && value > lcl)) {
+      violations.push(i);
+    }
+  }
+  
+  if (violations.length > 0) {
+    return {
+      ruleId: 7,
+      ruleName: "Regla 7 - Cerca del límite",
+      description: `Uno o más puntos en la zona A (2σ-3σ) pero dentro de los límites de control`,
+      points: violations,
+      severity: 'low'
+    };
+  }
+  return null;
+}
+
+// ============ REGLA 8: 15 puntos dentro de 1σ (estratificación o poca variación) ============
+export function rule8FifteenInZoneC(
+  values: number[],
+  centerLine: number,
+  ucl: number,
+  lcl: number
+): NelsonViolation | null {
+  const violations: number[] = [];
+  const sigma = (ucl - centerLine) / 3;
+  const zoneCUpper = centerLine + sigma;
+  const zoneCLower = centerLine - sigma;
+  let consecutiveInZoneC = 0;
+  
+  for (let i = 0; i < values.length; i++) {
+    const value = values[i];
+    const isInZoneC = value >= zoneCLower && value <= zoneCUpper;
+    
+    if (isInZoneC) {
+      consecutiveInZoneC++;
+    } else {
+      consecutiveInZoneC = 0;
+    }
+    
+    if (consecutiveInZoneC >= 15) {
+      for (let j = i - consecutiveInZoneC + 1; j <= i; j++) {
+        violations.push(j);
+      }
+    }
+  }
+  
+  if (violations.length > 0) {
+    return {
+      ruleId: 8,
+      ruleName: "Regla 8 - Estratificación",
+      description: `Quince puntos consecutivos dentro de la zona C (dentro de ±1σ) - posible estratificación o datos manipulados`,
+      points: [...new Set(violations)],
+      severity: 'low'
+    };
+  }
+  return null;
+}
+
+// ============ FUNCIÓN PRINCIPAL: Aplica las 8 reglas ============
 export function applyAllNelsonRules(
   values: number[],
   centerLine: number,
@@ -283,6 +382,8 @@ export function applyAllNelsonRules(
   const rule4 = rule4EightOnSameSide(values, centerLine);
   const rule5 = rule5SixPointTrend(values);
   const rule6 = rule6FourteenAlternating(values, centerLine);
+  const rule7 = rule7OnePointInZoneA(values, centerLine, ucl, lcl);
+  const rule8 = rule8FifteenInZoneC(values, centerLine, ucl, lcl);
   
   if (rule1) violations.push(rule1);
   if (rule2) violations.push(rule2);
@@ -290,6 +391,8 @@ export function applyAllNelsonRules(
   if (rule4) violations.push(rule4);
   if (rule5) violations.push(rule5);
   if (rule6) violations.push(rule6);
+  if (rule7) violations.push(rule7);
+  if (rule8) violations.push(rule8);
   
   return violations;
 }
@@ -309,4 +412,12 @@ export function getHighestSeverity(violations: NelsonViolation[]): 'high' | 'med
   if (violations.some(v => v.severity === 'medium')) return 'medium';
   if (violations.some(v => v.severity === 'low')) return 'low';
   return null;
+}
+
+// Obtener resumen de reglas activadas (para reporte)
+export function getRulesSummary(violations: NelsonViolation[]): string {
+  if (violations.length === 0) return "Ninguna regla activada";
+  
+  const ruleNames = violations.map(v => `R${v.ruleId}`).join(', ');
+  return `Reglas activadas: ${ruleNames}`;
 }
