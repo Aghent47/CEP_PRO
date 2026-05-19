@@ -114,11 +114,11 @@ const AlarmPanel: React.FC<AlarmPanelProps> = ({ violations, onPointClick }) => 
     return null;
   };
   
-  const severityLabels = {
-    high: 'CRÍTICA',
-    medium: 'ADVERTENCIA',
-    low: 'INFORMACIÓN'
-  };
+  // const severityLabels = {
+  //   high: 'CRÍTICA',
+  //   medium: 'ADVERTENCIA',
+  //   low: 'INFORMACIÓN'
+  // };
   
   const severityIcons = {
     high: '🔴',

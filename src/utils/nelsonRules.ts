@@ -327,11 +327,9 @@ export function rule7OnePointInZoneA(
 export function rule8FifteenInZoneC(
   values: number[],
   centerLine: number,
-  ucl: number,
-  lcl: number
+  sigma: number  // Cambiamos ucl y lcl por sigma
 ): NelsonViolation | null {
   const violations: number[] = [];
-  const sigma = (ucl - centerLine) / 3;
   const zoneCUpper = centerLine + sigma;
   const zoneCLower = centerLine - sigma;
   let consecutiveInZoneC = 0;
@@ -383,7 +381,7 @@ export function applyAllNelsonRules(
   const rule5 = rule5SixPointTrend(values);
   const rule6 = rule6FourteenAlternating(values, centerLine);
   const rule7 = rule7OnePointInZoneA(values, centerLine, ucl, lcl);
-  const rule8 = rule8FifteenInZoneC(values, centerLine, ucl, lcl);
+  const rule8 = rule8FifteenInZoneC(values, centerLine, sigma); 
   
   if (rule1) violations.push(rule1);
   if (rule2) violations.push(rule2);
