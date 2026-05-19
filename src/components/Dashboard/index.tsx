@@ -3,8 +3,12 @@ import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { calculateXRChartData, detectOutOfControlPoints } from '../../utils/spcCalculations';
 import { applyAllNelsonRules, getAllViolationPoints } from '../../utils/nelsonRules';
+import { calculateAllCapabilityIndices } from '../../utils/capabilityCalculations';
+import type { CapabilityResult } from '../../utils/capabilityCalculations';
 import ControlChart from '../ControlChart';
 import AlarmPanel from '../AlarmPanel';
+import CapabilityInput from '../CapabilityInput';
+import CapabilityResults from '../CapabilityResults';
 
 // ============ ESTILOS ============
 const DashboardContainer = styled.div`
@@ -164,17 +168,32 @@ const Dashboard: React.FC = () => {
   const [rViolations, setRViolations] = useState<any[]>([]);
   const [phase, setPhase] = useState<'I' | 'II'>('I');
   const [removedSubgroups, setRemovedSubgroups] = useState<number[]>([]);
+  
+  // Estado para límites de especificación
+  const [lie, setLie] = useState<number | null>(null);
+  const [lse, setLse] = useState<number | null>(null);
+  
+  // Estado para capacidad - usando el tipo CapabilityResult
+  const [capabilityIndices, setCapabilityIndices] = useState<CapabilityResult>({
+    cp: null,
+    cpk: null,
+    cpl: null,
+    cpu: null,
+    k: null,
+    ppm: null,
+    sigmaLevel: null,
+    ppmLower: null,
+    ppmUpper: null,
+    pncPercent: null
+  });
 
-  // Función para recalcular - la vamos a llamar manualmente cuando sea necesario
   const calculateChart = useCallback(() => {
     if (!data) return;
     
     try {
-      // Obtener los datos originales
       let originalSubgroups = data.numericData;
-      
-      // Aplicar filtro de subgrupos removidos si estamos en Fase I
       let subgroups = originalSubgroups;
+      
       if (phase === 'I' && removedSubgroups.length > 0) {
         subgroups = originalSubgroups.filter((_, idx) => !removedSubgroups.includes(idx));
       }
@@ -185,7 +204,6 @@ const Dashboard: React.FC = () => {
         return;
       }
       
-      // Verificar que todos los subgrupos tengan al menos el tamaño seleccionado
       const subgroupSizes = subgroups.map(sg => sg.length);
       const minSize = Math.min(...subgroupSizes);
       
@@ -195,24 +213,10 @@ const Dashboard: React.FC = () => {
         return;
       }
       
-      // Recortar cada subgrupo al tamaño seleccionado (tomar las primeras N mediciones)
       const trimmedSubgroups = subgroups.map(sg => sg.slice(0, selectedSubgroupSize));
-      
-      // Verificar que todos los subgrupos tengan el tamaño correcto después del recorte
-      const trimmedSizes = trimmedSubgroups.map(sg => sg.length);
-      const uniqueSizes = [...new Set(trimmedSizes)];
-      
-      if (uniqueSizes.length > 1 || uniqueSizes[0] !== selectedSubgroupSize) {
-        setError(`Error al ajustar los subgrupos al tamaño ${selectedSubgroupSize}`);
-        setChartData(null);
-        return;
-      }
-      
-      // Calcular los gráficos con los subgrupos ajustados
       const result = calculateXRChartData(trimmedSubgroups, selectedSubgroupSize);
       setChartData(result);
       
-      // Aplicar reglas de Nelson
       const xbarViolationsList = applyAllNelsonRules(
         result.xbar.values,
         result.xbar.centerLine,
@@ -231,21 +235,29 @@ const Dashboard: React.FC = () => {
       
       setXbarViolations(xbarViolationsList);
       setRViolations(rViolationsList);
+      
+      // Calcular índices de capacidad (Fase II)
+      if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
+        const processMean = result.xbar.centerLine;
+        const processSigma = result.r.centerLine / result.constants.d2;
+        const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
+        setCapabilityIndices(indices);
+      }
+      
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al calcular gráficos');
       setChartData(null);
     }
-  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartData]);
+  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartData, lie, lse]);
 
-  // Efecto para detectar el tamaño real de los datos
+  // Efecto para detectar el tamaño real
   useEffect(() => {
     if (data && data.numericData.length > 0) {
       const firstSubgroup = data.numericData[0];
       if (firstSubgroup) {
         const detectedSize = firstSubgroup.length;
         setActualSubgroupSize(detectedSize);
-        // Solo cambiar el tamaño seleccionado si el detectado es menor
         if (detectedSize < selectedSubgroupSize) {
           setSelectedSubgroupSize(detectedSize);
         }
@@ -253,19 +265,29 @@ const Dashboard: React.FC = () => {
     }
   }, [data]);
 
-  // Efecto para recalcular cuando cambia el tamaño del subgrupo
+  // Efecto para recalcular cuando cambia el tamaño
   useEffect(() => {
     if (data && data.numericData.length > 0) {
       calculateChart();
     }
   }, [selectedSubgroupSize, calculateChart, data]);
 
-  // Efecto para recalcular cuando cambian los subgrupos removidos (solo Fase I)
+  // Efecto para recalcular cuando cambian los subgrupos removidos (Fase I)
   useEffect(() => {
     if (data && data.numericData.length > 0 && phase === 'I') {
       calculateChart();
     }
   }, [removedSubgroups, calculateChart, data, phase]);
+
+  // Efecto para recalcular capacidad cuando cambian especificaciones
+  useEffect(() => {
+    if (phase === 'II' && chartData && lie !== null && lse !== null && lie < lse) {
+      const processMean = chartData.xbar.centerLine;
+      const processSigma = chartData.r.centerLine / chartData.constants.d2;
+      const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
+      setCapabilityIndices(indices);
+    }
+  }, [lie, lse, phase, chartData]);
 
   const xbarOutOfControl = chartData ? detectOutOfControlPoints(
     chartData.xbar.values,
@@ -301,23 +323,28 @@ const Dashboard: React.FC = () => {
 
   const handleSubgroupSizeChange = (newSize: number) => {
     setSelectedSubgroupSize(newSize);
-    // Limpiar subgrupos removidos al cambiar el tamaño
     if (phase === 'I' && removedSubgroups.length > 0) {
       setRemovedSubgroups([]);
     }
   };
 
+  const handleSpecsChange = (newLie: number | null, newLse: number | null) => {
+    setLie(newLie);
+    setLse(newLse);
+  };
+
   const hasViolations = xbarViolations.length > 0 || rViolations.length > 0;
   const totalOutOfControl = xbarOutOfControl.length + rOutOfControl.length;
   const totalViolations = xbarRuleViolations.length + rRuleViolations.length;
+  
+  const hasSpecs = lie !== null && lse !== null && lie < lse;
 
-  if (!data) return null;
-
-  // Determinar las opciones disponibles para el tamaño de subgrupo
   const availableSizes = [];
   for (let i = 2; i <= Math.min(25, actualSubgroupSize); i++) {
     availableSizes.push(i);
   }
+
+  if (!data) return null;
 
   return (
     <DashboardContainer>
@@ -331,7 +358,7 @@ const Dashboard: React.FC = () => {
             }
           }}>
             <option value="I">Fase I - Estabilización (Limpieza de datos)</option>
-            <option value="II">Fase II - Monitoreo (Capacidad)</option>
+            <option value="II">Fase II - Monitoreo y Capacidad</option>
           </select>
         </ConfigGroup>
         <ConfigGroup>
@@ -392,6 +419,10 @@ const Dashboard: React.FC = () => {
         </CleaningPanel>
       )}
 
+      {phase === 'II' && (
+        <CapabilityInput onSpecsChange={handleSpecsChange} unit={unit} />
+      )}
+
       {error && (
         <div style={{ 
           background: 'rgba(239, 68, 68, 0.1)', 
@@ -410,6 +441,20 @@ const Dashboard: React.FC = () => {
           <AlarmPanel violations={xbarViolations} />
           <AlarmPanel violations={rViolations} />
         </>
+      )}
+
+      {phase === 'II' && chartData && hasSpecs && (
+        <CapabilityResults
+          cp={capabilityIndices.cp}
+          cpk={capabilityIndices.cpk}
+          cpl={capabilityIndices.cpl}
+          cpu={capabilityIndices.cpu}
+          k={capabilityIndices.k}
+          ppm={capabilityIndices.ppm}
+          sigmaLevel={capabilityIndices.sigmaLevel}
+          isStable={true}
+          hasSpecs={hasSpecs}
+        />
       )}
 
       {chartData && (
