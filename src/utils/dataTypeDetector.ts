@@ -19,7 +19,6 @@ export function detectDataType(rawData: CellValue[][]): DetectionResult {
   // Verificar si tiene exactamente 3 columnas (formato de atributos)
   if (headers.length === 3) {
     // Verificar que las columnas 2 y 3 contienen enteros (tamaño de muestra y defectos)
-    let isAttributeFormat = true;
     let sampleCount = 0;
     
     for (const row of dataRows) {

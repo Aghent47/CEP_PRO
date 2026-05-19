@@ -1,4 +1,4 @@
-import type { AttributeData, AttributeChartData, AttributeValidationResult } from '../types/attributeTypes';
+import type { AttributeChartData, AttributeValidationResult } from '../types/attributeTypes';
 
 /**
  * Valida los datos para gráficos de atributos

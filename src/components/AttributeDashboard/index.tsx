@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { parseAttributeData } from '../../utils/attributeParser';
-import { calculatePChart, calculateNPChart, calculateCChart, calculateUChart, detectAttributeChartType } from '../../utils/attributeCalculations';
+import { calculatePChart, calculateNPChart, calculateCChart, calculateUChart } from '../../utils/attributeCalculations';
 import { detectOutOfControlPoints } from '../../utils/spcCalculations';
 import AttributeControlChart from '../AttributeControlChart';
 
