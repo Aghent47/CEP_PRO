@@ -336,6 +336,11 @@ const Dashboard: React.FC = () => {
         </ConfigGroup>
         <ConfigGroup>
           <label>Tamaño del Subgrupo (n)</label>
+          {actualSubgroupSize > 0 && actualSubgroupSize !== selectedSubgroupSize && (
+            <div style={{ fontSize: '0.7rem', color: 'var(--warning)', marginBottom: '0.25rem' }}>
+              ⚠️ Datos tienen {actualSubgroupSize} mediciones. Usando primeras {selectedSubgroupSize}
+            </div>
+          )}
           <select 
             value={selectedSubgroupSize}
             onChange={(e) => handleSubgroupSizeChange(Number(e.target.value))}
@@ -344,11 +349,6 @@ const Dashboard: React.FC = () => {
               <option key={n} value={n}>n = {n} mediciones</option>
             ))}
           </select>
-          {actualSubgroupSize > 0 && actualSubgroupSize !== selectedSubgroupSize && (
-            <div style={{ fontSize: '0.7rem', color: 'var(--warning)', marginTop: '0.25rem' }}>
-              ⚠️ Datos tienen {actualSubgroupSize} mediciones. Usando primeras {selectedSubgroupSize}
-            </div>
-          )}
         </ConfigGroup>
         <ConfigGroup>
           <label>Unidad de Medida</label>
