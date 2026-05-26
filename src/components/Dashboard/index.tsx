@@ -10,6 +10,7 @@ import AlarmPanel from '../AlarmPanel';
 import CapabilityInput from '../CapabilityInput';
 import CapabilityResults from '../CapabilityResults';
 import ExecutiveReport from '../ExecutiveReport';
+import AdvancedMetrics from '../AdvancedMetrics';
 
 // ============ ESTILOS ============
 const DashboardContainer = styled.div`
@@ -470,6 +471,12 @@ const Dashboard: React.FC = () => {
           rViolations={rViolations}
           removedSubgroups={removedSubgroups}
           originalSubgroupsCount={data?.numericData.length || 0}
+        />
+      )}
+        {phase === 'II' && chartData && (
+        <AdvancedMetrics 
+        currentN={selectedSubgroupSize} 
+        currentSamplingTime={1}
         />
       )}
 
