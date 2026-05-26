@@ -128,9 +128,7 @@ const CapabilityInput: React.FC<CapabilityInputProps> = ({ onSpecsChange, unit }
         </InputGroup>
       </InputGrid>
       <WarningMessage>
-        ℹ️ Los límites de especificación representan la "voz del cliente". 
-        No se grafican en las cartas de control de medias (X̄) - eso es un error conceptual grave.
-        Se utilizan SOLO para el análisis de capacidad del proceso.
+        ℹ️ Los límites de especificación representan la "voz del cliente". Asegúrate de que estos valores reflejen las expectativas y requisitos del cliente para el proceso o producto que estás evaluando.
       </WarningMessage>
     </InputContainer>
   );

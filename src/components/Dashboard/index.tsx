@@ -14,8 +14,9 @@ import CapabilityResults from '../CapabilityResults';
 import ExecutiveReport from '../ExecutiveReport';
 import AdvancedMetrics from '../AdvancedMetrics';
 import ProcessHistogram from '../ProcessHistogram';
+import NormalityCheck from '../NormalityCheck';
 
-// ============ ESTILOS (igual que antes) ============
+// ============ ESTILOS ============
 const DashboardContainer = styled.div`
   margin-top: 2rem;
 `;
@@ -66,7 +67,6 @@ const ConfigGroup = styled.div`
   }
 `;
 
-// Cambiar la definición del styled component ChartTypeIndicator
 const ChartTypeIndicator = styled.div<{ chartType: 'X-R' | 'X-s' | 'Attributes' }>`
   background: ${props => {
     if (props.chartType === 'X-R') return 'rgba(59, 130, 246, 0.2)';
@@ -213,6 +213,12 @@ const Dashboard: React.FC = () => {
   const [lie, setLie] = useState<number | null>(null);
   const [lse, setLse] = useState<number | null>(null);
   
+  // Estado para normalidad
+  const [showNormalityCheck, setShowNormalityCheck] = useState<boolean>(true);
+  const [normalityPassed, setNormalityPassed] = useState<boolean>(false);
+  const [transformedData, setTransformedData] = useState<number[] | null>(null);
+  const [transformationLambda, setTransformationLambda] = useState<number | null>(null);
+  
   // Estado para capacidad
   const [capabilityIndices, setCapabilityIndices] = useState<CapabilityResult>({
     cp: null,
@@ -227,6 +233,9 @@ const Dashboard: React.FC = () => {
     pncPercent: null
   });
 
+  // Estado para mensajes
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
   // Determinar automáticamente el tipo de gráfico según n
   const determineChartType = useCallback((n: number): 'X-R' | 'X-s' => {
     return getRecommendedChartType(n);
@@ -240,6 +249,52 @@ const Dashboard: React.FC = () => {
     }
   }, [selectedSubgroupSize, determineChartType, chartType, setChartType]);
 
+  // Función para aplicar transformación Box-Cox
+  const applyBoxCoxTransform = (values: number[], lambda: number): number[] => {
+    const minValue = Math.min(...values);
+    const offset = minValue <= 0 ? Math.abs(minValue) + 0.01 : 0;
+    const positiveData = values.map(v => v + offset);
+    
+    if (lambda === 0) {
+      return positiveData.map(v => Math.log(v));
+    }
+    return positiveData.map(v => (Math.pow(v, lambda) - 1) / lambda);
+  };
+
+  // Manejar decisión después de verificar normalidad
+  const handleNormalityDecision = (action: 'continue' | 'transform' | 'empirical' | 'skip') => {
+    if (action === 'empirical') {
+      setSuccessMessage('📊 Usando límites empíricos basados en percentiles para el análisis.');
+      setShowNormalityCheck(false);
+      setNormalityPassed(true);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } else if (action === 'skip') {
+      setShowNormalityCheck(false);
+      setNormalityPassed(true);
+    } else {
+      setShowNormalityCheck(false);
+      setNormalityPassed(true);
+    }
+  };
+
+  const handleTransform = (lambda: number) => {
+    if (!data) return;
+    
+    const allData: number[] = [];
+    data.numericData.forEach(subgroup => {
+      allData.push(...subgroup);
+    });
+    
+    const transformed = applyBoxCoxTransform(allData, lambda);
+    setTransformedData(transformed);
+    setTransformationLambda(lambda);
+    setShowNormalityCheck(false);
+    setNormalityPassed(true);
+    
+    setSuccessMessage(`✅ Transformación Box-Cox aplicada (λ=${lambda}). Los datos transformados se usarán para el análisis.`);
+    setTimeout(() => setSuccessMessage(null), 3000);
+  };
+
   const calculateChart = useCallback(() => {
     if (!data) return;
     
@@ -247,8 +302,19 @@ const Dashboard: React.FC = () => {
       let originalSubgroups = data.numericData;
       let subgroups = originalSubgroups;
       
+      // Si hay datos transformados, usarlos
+      if (transformedData && transformedData.length > 0) {
+        // Reorganizar datos transformados en subgrupos
+        const subgroupSize = selectedSubgroupSize;
+        const numSubgroups = Math.floor(transformedData.length / subgroupSize);
+        subgroups = [];
+        for (let i = 0; i < numSubgroups; i++) {
+          subgroups.push(transformedData.slice(i * subgroupSize, (i + 1) * subgroupSize));
+        }
+      }
+      
       if (phase === 'I' && removedSubgroups.length > 0) {
-        subgroups = originalSubgroups.filter((_, idx) => !removedSubgroups.includes(idx));
+        subgroups = subgroups.filter((_, idx) => !removedSubgroups.includes(idx));
       }
       
       if (subgroups.length < 2) {
@@ -270,7 +336,6 @@ const Dashboard: React.FC = () => {
       
       const trimmedSubgroups = subgroups.map(sg => sg.slice(0, selectedSubgroupSize));
       
-      // Calcular según el tipo de gráfico recomendado
       const recommendedType = determineChartType(selectedSubgroupSize);
       
       if (recommendedType === 'X-R') {
@@ -297,7 +362,6 @@ const Dashboard: React.FC = () => {
         setXbarViolations(xbarViolationsList);
         setRViolations(rViolationsList);
         
-        // Calcular capacidad (Fase II)
         if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
           const processMean = result.xbar.centerLine;
           const processSigma = result.r.centerLine / result.constants.d2;
@@ -328,7 +392,6 @@ const Dashboard: React.FC = () => {
         setXbarViolations(xbarViolationsList);
         setRViolations(sViolationsList);
         
-        // Calcular capacidad (Fase II)
         if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
           const processMean = result.xbar.centerLine;
           const processSigma = result.s.centerLine / result.constants.c4;
@@ -343,29 +406,21 @@ const Dashboard: React.FC = () => {
       setChartDataXR(null);
       setChartDataXS(null);
     }
-  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartDataXR, setChartDataXS, lie, lse, determineChartType]);
-  // En el Dashboard, añade esta función:
-const handleRemovePoints = useCallback((pointsToRemove: number[]) => {
-  // Convertir a números de subgrupo (0-index)
-  const pointsToRemoveSet = new Set(pointsToRemove);
-  
-  // Verificar que los puntos existen
-  if (chartDataXR || chartDataXS) {
-    const currentSubgroups = chartDataXR?.subgroups.length || chartDataXS?.subgroups.length || 0;
-    const validPoints = pointsToRemove.filter(p => p < currentSubgroups);
-    
-    if (validPoints.length > 0) {
-      setRemovedSubgroups(prev => [...new Set([...prev, ...validPoints])]);
-      
-      // Mostrar mensaje de confirmación
-      setSuccessMessage(`${validPoints.length} subgrupo(s) eliminado(s) correctamente. Recalculando...`);
-      setTimeout(() => setSuccessMessage(null), 3000);
-    }
-  }
-}, [chartDataXR, chartDataXS]);
+  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartDataXR, setChartDataXS, lie, lse, determineChartType, transformedData]);
 
-// Añadir estado para mensaje de éxito
-const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const handleRemovePoints = useCallback((pointsToRemove: number[]) => {
+    if (chartDataXR || chartDataXS) {
+      const currentSubgroups = chartDataXR?.subgroups.length || chartDataXS?.subgroups.length || 0;
+      const validPoints = pointsToRemove.filter(p => p < currentSubgroups);
+      
+      if (validPoints.length > 0) {
+        setRemovedSubgroups(prev => [...new Set([...prev, ...validPoints])]);
+        setSuccessMessage(`${validPoints.length} subgrupo(s) eliminado(s) correctamente. Recalculando límites...`);
+        setTimeout(() => setSuccessMessage(null), 3000);
+      }
+    }
+  }, [chartDataXR, chartDataXS]);
+
   // Efecto para detectar el tamaño real
   useEffect(() => {
     if (data && data.numericData.length > 0) {
@@ -382,24 +437,24 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Efecto para recalcular cuando cambia el tamaño
   useEffect(() => {
-    if (data && data.numericData.length > 0) {
+    if (data && data.numericData.length > 0 && normalityPassed) {
       calculateChart();
     }
-  }, [selectedSubgroupSize, calculateChart, data, chartType]);
+  }, [selectedSubgroupSize, calculateChart, data, chartType, normalityPassed]);
 
   // Efecto para recalcular cuando cambian los subgrupos removidos
   useEffect(() => {
-    if (data && data.numericData.length > 0 && phase === 'I') {
+    if (data && data.numericData.length > 0 && phase === 'I' && normalityPassed) {
       calculateChart();
     }
-  }, [removedSubgroups, calculateChart, data, phase]);
+  }, [removedSubgroups, calculateChart, data, phase, normalityPassed]);
 
   // Efecto para recalcular capacidad cuando cambian especificaciones
   useEffect(() => {
-    if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
+    if (phase === 'II' && lie !== null && lse !== null && lie < lse && normalityPassed) {
       calculateChart();
     }
-  }, [lie, lse, phase, calculateChart]);
+  }, [lie, lse, phase, calculateChart, normalityPassed]);
 
   const xbarOutOfControl = chartDataXR ? detectOutOfControlPoints(
     chartDataXR.xbar.values,
@@ -440,11 +495,15 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const problematicPoints = [...new Set([...xbarOutOfControl, ...rOutOfControl, ...xbarRuleViolations, ...rRuleViolations])];
     if (problematicPoints.length > 0) {
       setRemovedSubgroups(prev => [...new Set([...prev, ...problematicPoints])]);
+      setSuccessMessage(`${problematicPoints.length} punto(s) problemático(s) eliminado(s). Recalculando...`);
+      setTimeout(() => setSuccessMessage(null), 3000);
     }
   };
 
   const handleResetCleaning = () => {
     setRemovedSubgroups([]);
+    setSuccessMessage('Datos restablecidos a su estado original.');
+    setTimeout(() => setSuccessMessage(null), 3000);
   };
 
   const handleSubgroupSizeChange = (newSize: number) => {
@@ -474,6 +533,33 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const currentChartData = chartDataXR || chartDataXS;
   const isXRRChart = chartType === 'X-R';
+
+  // Extraer todos los datos para la prueba de normalidad
+  const getAllDataForNormality = (): number[] => {
+    const allData: number[] = [];
+    if (transformedData && transformedData.length > 0) {
+      return transformedData;
+    }
+    data.numericData.forEach(subgroup => {
+      subgroup.forEach(value => {
+        allData.push(value);
+      });
+    });
+    return allData;
+  };
+
+  // Si aún no se ha verificado la normalidad, mostrar el componente
+  if (showNormalityCheck) {
+    return (
+      <DashboardContainer>
+        <NormalityCheck
+          data={getAllDataForNormality()}
+          onProceed={handleNormalityDecision}
+          onTransform={handleTransform}
+        />
+      </DashboardContainer>
+    );
+  }
 
   return (
     <DashboardContainer>
@@ -505,6 +591,11 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
               <option key={n} value={n}>n = {n} mediciones</option>
             ))}
           </select>
+          {transformationLambda !== null && (
+            <div style={{ fontSize: '0.7rem', color: '#10b981', marginTop: '0.25rem' }}>
+              ✅ Datos transformados con Box-Cox (λ={transformationLambda})
+            </div>
+          )}
         </ConfigGroup>
         <ConfigGroup>
           <label>Unidad de Medida</label>
@@ -518,22 +609,35 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
         <ConfigGroup>
           <label>Tipo de Gráfico (Automático)</label>
           <ChartTypeIndicator chartType={chartType}>
-  📊 {chartType === 'X-R' && 'Gráfico X-R (Medias y Rangos)'}
-  {chartType === 'X-s' && 'Gráfico X-s (Medias y Desviación Estándar)'}
-  {chartType === 'Attributes' && 'Gráfico de Atributos (p, np, c, u)'}
-  <br />
-  <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
-    {chartType === 'X-R' && '✓ Recomendado para n ≤ 9'}
-    {chartType === 'X-s' && '✓ Recomendado para n ≥ 10'}
-    {chartType === 'Attributes' && '✓ Para datos de conteo (defectos)'}
-  </span>
-</ChartTypeIndicator>
+            📊 {chartType === 'X-R' && 'Gráfico X-R (Medias y Rangos)'}
+            {chartType === 'X-s' && 'Gráfico X-s (Medias y Desviación Estándar)'}
+            {chartType === 'Attributes' && 'Gráfico de Atributos (p, np, c, u)'}
+            <br />
+            <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
+              {chartType === 'X-R' && '✓ Recomendado para n ≤ 9'}
+              {chartType === 'X-s' && '✓ Recomendado para n ≥ 10'}
+              {chartType === 'Attributes' && '✓ Para datos de conteo (defectos)'}
+            </span>
+          </ChartTypeIndicator>
         </ConfigGroup>
         <ConfigGroup>
           <label>&nbsp;</label>
           <Button onClick={calculateChart}>Recalcular</Button>
         </ConfigGroup>
       </ConfigPanel>
+
+      {successMessage && (
+        <div style={{ 
+          background: 'rgba(16, 185, 129, 0.1)', 
+          border: '1px solid #10b981',
+          borderRadius: '12px',
+          padding: '1rem',
+          marginBottom: '1rem',
+          color: '#6ee7b7'
+        }}>
+          ✅ {successMessage}
+        </div>
+      )}
 
       {phase === 'I' && (
         <CleaningPanel>
@@ -553,7 +657,7 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
               disabled={!(totalOutOfControl > 0 || totalViolations > 0)}
               variant="danger"
             >
-              Eliminar puntos problemáticos
+              Eliminar todos los puntos problemáticos
             </CleaningButton>
             <CleaningButton onClick={handleResetCleaning} disabled={removedSubgroups.length === 0}>
               Restablecer datos originales
@@ -579,37 +683,24 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
         </div>
       )}
 
-{hasViolations && phase === 'I' && (
-  <>
-<AlarmPanel 
-  violations={xbarViolations} 
-  onPointClick={(point) => console.log('Punto clickeado:', point)}
-  onRemovePoints={handleRemovePoints}
-  chartType="xbar"
-  removedSubgroups={removedSubgroups}  // ← Añadir esta línea
-/>
-<AlarmPanel 
-  violations={rViolations}
-  onPointClick={(point) => console.log('Punto clickeado:', point)}
-  onRemovePoints={handleRemovePoints}
-  chartType="r"
-  removedSubgroups={removedSubgroups}  // ← Añadir esta línea
-/>
-  </>
-)}
-
-{successMessage && (
-  <div style={{ 
-    background: 'rgba(16, 185, 129, 0.1)', 
-    border: '1px solid #10b981',
-    borderRadius: '12px',
-    padding: '1rem',
-    marginBottom: '1rem',
-    color: '#6ee7b7'
-  }}>
-    ✅ {successMessage}
-  </div>
-)}
+      {hasViolations && phase === 'I' && (
+        <>
+          <AlarmPanel 
+            violations={xbarViolations} 
+            onPointClick={(point) => console.log('Punto clickeado:', point)}
+            onRemovePoints={handleRemovePoints}
+            chartType="xbar"
+            removedSubgroups={removedSubgroups}
+          />
+          <AlarmPanel 
+            violations={rViolations}
+            onPointClick={(point) => console.log('Punto clickeado:', point)}
+            onRemovePoints={handleRemovePoints}
+            chartType="r"
+            removedSubgroups={removedSubgroups}
+          />
+        </>
+      )}
 
       {phase === 'II' && currentChartData && hasSpecs && (
         <CapabilityResults
@@ -652,7 +743,7 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
         <>
           <StatsGrid>
             <StatCard>
-              <div className="label">Media del Proceso(X̄̄)</div>
+              <div className="label">Media del Proceso (X̄̄)</div>
               <div className="value">{currentChartData.xbar.centerLine.toFixed(4)}</div>
               <span className="unit">{unit}</span>
             </StatCard>
@@ -695,6 +786,7 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
                 outOfControlPoints={rOutOfControl}
                 ruleViolationPoints={rRuleViolations}
                 unit={unit}
+                onPointClick={(point) => console.log('Clic en punto:', point)}
               />
             </>
           )}
@@ -710,6 +802,7 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
                 outOfControlPoints={xbarOutOfControl}
                 ruleViolationPoints={xbarRuleViolations}
                 unit={unit}
+                onPointClick={(point) => console.log('Clic en punto:', point)}
               />
               <ControlChart
                 title="Carta s (Gráfico de Desviación Estándar)"
@@ -720,33 +813,33 @@ const [successMessage, setSuccessMessage] = useState<string | null>(null);
                 outOfControlPoints={rOutOfControl}
                 ruleViolationPoints={rRuleViolations}
                 unit={unit}
+                onPointClick={(point) => console.log('Clic en punto:', point)}
               />
             </>
           )}
 
-          {/* Histograma con Campana de Gauss */}
-{currentChartData && (
-  <ProcessHistogram
-    data={(() => {
-      // Extraer todos los datos originales
-      if (!data) return [];
-      const allData: number[] = [];
-      data.numericData.forEach(subgroup => {
-        subgroup.forEach(value => {
-          allData.push(value);
-        });
-      });
-      return allData;
-    })()}
-    mean={currentChartData.xbar.centerLine}
-    sigma={parseFloat(calculateProcessSigma())}
-    lie={lie}
-    lse={lse}
-    target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
-    unit={unit}
-    title="Distribución del Proceso vs Especificaciones"
-  />
-)}
+          <ProcessHistogram
+            data={(() => {
+              if (!data) return [];
+              const allData: number[] = [];
+              if (transformedData && transformedData.length > 0) {
+                return transformedData;
+              }
+              data.numericData.forEach(subgroup => {
+                subgroup.forEach(value => {
+                  allData.push(value);
+                });
+              });
+              return allData;
+            })()}
+            mean={currentChartData.xbar.centerLine}
+            sigma={parseFloat(calculateProcessSigma())}
+            lie={lie}
+            lse={lse}
+            target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
+            unit={unit}
+            title="Distribución del Proceso vs Especificaciones"
+          />
         </>
       )}
     </DashboardContainer>
