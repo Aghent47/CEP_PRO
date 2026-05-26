@@ -2,9 +2,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { calculateXRChartData, detectOutOfControlPoints } from '../../utils/spcCalculations';
+import { calculateXSChartData } from '../../utils/spcCalculationsXS';
 import { applyAllNelsonRules, getAllViolationPoints } from '../../utils/nelsonRules';
 import { calculateAllCapabilityIndices } from '../../utils/capabilityCalculations';
 import type { CapabilityResult } from '../../utils/capabilityCalculations';
+import { getRecommendedChartType } from '../../utils/spcConstants';
 import ControlChart from '../ControlChart';
 import AlarmPanel from '../AlarmPanel';
 import CapabilityInput from '../CapabilityInput';
@@ -12,7 +14,7 @@ import CapabilityResults from '../CapabilityResults';
 import ExecutiveReport from '../ExecutiveReport';
 import AdvancedMetrics from '../AdvancedMetrics';
 
-// ============ ESTILOS ============
+// ============ ESTILOS (igual que antes) ============
 const DashboardContainer = styled.div`
   margin-top: 2rem;
 `;
@@ -61,6 +63,29 @@ const ConfigGroup = styled.div`
       border-color: var(--accent-primary);
     }
   }
+`;
+
+// Cambiar la definición del styled component ChartTypeIndicator
+const ChartTypeIndicator = styled.div<{ chartType: 'X-R' | 'X-s' | 'Attributes' }>`
+  background: ${props => {
+    if (props.chartType === 'X-R') return 'rgba(59, 130, 246, 0.2)';
+    if (props.chartType === 'X-s') return 'rgba(16, 185, 129, 0.2)';
+    return 'rgba(245, 158, 11, 0.2)';
+  }};
+  border: 1px solid ${props => {
+    if (props.chartType === 'X-R') return '#3b82f6';
+    if (props.chartType === 'X-s') return '#10b981';
+    return '#f59e0b';
+  }};
+  border-radius: 8px;
+  padding: 0.5rem 1rem;
+  font-size: 0.75rem;
+  color: ${props => {
+    if (props.chartType === 'X-R') return '#3b82f6';
+    if (props.chartType === 'X-s') return '#10b981';
+    return '#f59e0b';
+  }};
+  font-weight: 600;
 `;
 
 const StatsGrid = styled.div`
@@ -162,7 +187,19 @@ const CleaningButton = styled.button<{ variant?: 'primary' | 'danger' }>`
 
 // ============ COMPONENTE PRINCIPAL ============
 const Dashboard: React.FC = () => {
-  const { data, chartData, setChartData, selectedSubgroupSize, setSelectedSubgroupSize, fileName } = useDataStore();
+  const { 
+    data, 
+    chartDataXR, 
+    chartDataXS,
+    setChartDataXR,
+    setChartDataXS,
+    selectedSubgroupSize, 
+    setSelectedSubgroupSize,
+    chartType,
+    setChartType,
+    fileName 
+  } = useDataStore();
+  
   const [error, setError] = useState<string | null>(null);
   const [actualSubgroupSize, setActualSubgroupSize] = useState<number>(0);
   const [unit, setUnit] = useState<string>("mm");
@@ -175,7 +212,7 @@ const Dashboard: React.FC = () => {
   const [lie, setLie] = useState<number | null>(null);
   const [lse, setLse] = useState<number | null>(null);
   
-  // Estado para capacidad - usando el tipo CapabilityResult
+  // Estado para capacidad
   const [capabilityIndices, setCapabilityIndices] = useState<CapabilityResult>({
     cp: null,
     cpk: null,
@@ -188,6 +225,19 @@ const Dashboard: React.FC = () => {
     ppmUpper: null,
     pncPercent: null
   });
+
+  // Determinar automáticamente el tipo de gráfico según n
+  const determineChartType = useCallback((n: number): 'X-R' | 'X-s' => {
+    return getRecommendedChartType(n);
+  }, []);
+
+  // Actualizar tipo de gráfico cuando cambia n
+  useEffect(() => {
+    const recommendedType = determineChartType(selectedSubgroupSize);
+    if (recommendedType !== chartType) {
+      setChartType(recommendedType);
+    }
+  }, [selectedSubgroupSize, determineChartType, chartType, setChartType]);
 
   const calculateChart = useCallback(() => {
     if (!data) return;
@@ -202,7 +252,8 @@ const Dashboard: React.FC = () => {
       
       if (subgroups.length < 2) {
         setError('Se necesitan al menos 2 subgrupos para el análisis');
-        setChartData(null);
+        setChartDataXR(null);
+        setChartDataXS(null);
         return;
       }
       
@@ -211,47 +262,87 @@ const Dashboard: React.FC = () => {
       
       if (selectedSubgroupSize > minSize) {
         setError(`El tamaño de subgrupo seleccionado (${selectedSubgroupSize}) es mayor que el número de mediciones disponibles (${minSize}). Reduce el tamaño.`);
-        setChartData(null);
+        setChartDataXR(null);
+        setChartDataXS(null);
         return;
       }
       
       const trimmedSubgroups = subgroups.map(sg => sg.slice(0, selectedSubgroupSize));
-      const result = calculateXRChartData(trimmedSubgroups, selectedSubgroupSize);
-      setChartData(result);
       
-      const xbarViolationsList = applyAllNelsonRules(
-        result.xbar.values,
-        result.xbar.centerLine,
-        result.xbar.ucl,
-        result.xbar.lcl,
-        result.xbar.sigma
-      );
+      // Calcular según el tipo de gráfico recomendado
+      const recommendedType = determineChartType(selectedSubgroupSize);
       
-      const rViolationsList = applyAllNelsonRules(
-        result.r.values,
-        result.r.centerLine,
-        result.r.ucl,
-        result.r.lcl,
-        result.r.sigma
-      );
-      
-      setXbarViolations(xbarViolationsList);
-      setRViolations(rViolationsList);
-      
-      // Calcular índices de capacidad (Fase II)
-      if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
-        const processMean = result.xbar.centerLine;
-        const processSigma = result.r.centerLine / result.constants.d2;
-        const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
-        setCapabilityIndices(indices);
+      if (recommendedType === 'X-R') {
+        const result = calculateXRChartData(trimmedSubgroups, selectedSubgroupSize);
+        setChartDataXR(result);
+        setChartDataXS(null);
+        
+        const xbarViolationsList = applyAllNelsonRules(
+          result.xbar.values,
+          result.xbar.centerLine,
+          result.xbar.ucl,
+          result.xbar.lcl,
+          result.xbar.sigma
+        );
+        
+        const rViolationsList = applyAllNelsonRules(
+          result.r.values,
+          result.r.centerLine,
+          result.r.ucl,
+          result.r.lcl,
+          result.r.sigma
+        );
+        
+        setXbarViolations(xbarViolationsList);
+        setRViolations(rViolationsList);
+        
+        // Calcular capacidad (Fase II)
+        if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
+          const processMean = result.xbar.centerLine;
+          const processSigma = result.r.centerLine / result.constants.d2;
+          const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
+          setCapabilityIndices(indices);
+        }
+      } else {
+        const result = calculateXSChartData(trimmedSubgroups, selectedSubgroupSize);
+        setChartDataXS(result);
+        setChartDataXR(null);
+        
+        const xbarViolationsList = applyAllNelsonRules(
+          result.xbar.values,
+          result.xbar.centerLine,
+          result.xbar.ucl,
+          result.xbar.lcl,
+          result.xbar.sigma
+        );
+        
+        const sViolationsList = applyAllNelsonRules(
+          result.s.values,
+          result.s.centerLine,
+          result.s.ucl,
+          result.s.lcl,
+          result.s.sigma
+        );
+        
+        setXbarViolations(xbarViolationsList);
+        setRViolations(sViolationsList);
+        
+        // Calcular capacidad (Fase II)
+        if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
+          const processMean = result.xbar.centerLine;
+          const processSigma = result.s.centerLine / result.constants.c4;
+          const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
+          setCapabilityIndices(indices);
+        }
       }
       
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al calcular gráficos');
-      setChartData(null);
+      setChartDataXR(null);
+      setChartDataXS(null);
     }
-  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartData, lie, lse]);
+  }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartDataXR, setChartDataXS, lie, lse, determineChartType]);
 
   // Efecto para detectar el tamaño real
   useEffect(() => {
@@ -272,9 +363,9 @@ const Dashboard: React.FC = () => {
     if (data && data.numericData.length > 0) {
       calculateChart();
     }
-  }, [selectedSubgroupSize, calculateChart, data]);
+  }, [selectedSubgroupSize, calculateChart, data, chartType]);
 
-  // Efecto para recalcular cuando cambian los subgrupos removidos (Fase I)
+  // Efecto para recalcular cuando cambian los subgrupos removidos
   useEffect(() => {
     if (data && data.numericData.length > 0 && phase === 'I') {
       calculateChart();
@@ -283,33 +374,44 @@ const Dashboard: React.FC = () => {
 
   // Efecto para recalcular capacidad cuando cambian especificaciones
   useEffect(() => {
-    if (phase === 'II' && chartData && lie !== null && lse !== null && lie < lse) {
-      const processMean = chartData.xbar.centerLine;
-      const processSigma = chartData.r.centerLine / chartData.constants.d2;
-      const indices = calculateAllCapabilityIndices(lie, lse, processMean, processSigma);
-      setCapabilityIndices(indices);
+    if (phase === 'II' && lie !== null && lse !== null && lie < lse) {
+      calculateChart();
     }
-  }, [lie, lse, phase, chartData]);
+  }, [lie, lse, phase, calculateChart]);
 
-  const xbarOutOfControl = chartData ? detectOutOfControlPoints(
-    chartData.xbar.values,
-    chartData.xbar.ucl,
-    chartData.xbar.lcl
+  const xbarOutOfControl = chartDataXR ? detectOutOfControlPoints(
+    chartDataXR.xbar.values,
+    chartDataXR.xbar.ucl,
+    chartDataXR.xbar.lcl
+  ) : chartDataXS ? detectOutOfControlPoints(
+    chartDataXS.xbar.values,
+    chartDataXS.xbar.ucl,
+    chartDataXS.xbar.lcl
   ) : [];
 
-  const rOutOfControl = chartData ? detectOutOfControlPoints(
-    chartData.r.values,
-    chartData.r.ucl,
-    chartData.r.lcl
+  const rOutOfControl = chartDataXR ? detectOutOfControlPoints(
+    chartDataXR.r.values,
+    chartDataXR.r.ucl,
+    chartDataXR.r.lcl
+  ) : chartDataXS ? detectOutOfControlPoints(
+    chartDataXS.s.values,
+    chartDataXS.s.ucl,
+    chartDataXS.s.lcl
   ) : [];
 
   const xbarRuleViolations = xbarViolations.length > 0 ? getAllViolationPoints(xbarViolations) : [];
   const rRuleViolations = rViolations.length > 0 ? getAllViolationPoints(rViolations) : [];
 
   const calculateProcessSigma = (): string => {
-    if (!chartData) return '0';
-    const sigma = chartData.r.centerLine / chartData.constants.d2;
-    return sigma.toFixed(4);
+    if (chartDataXR) {
+      const sigma = chartDataXR.r.centerLine / chartDataXR.constants.d2;
+      return sigma.toFixed(4);
+    }
+    if (chartDataXS) {
+      const sigma = chartDataXS.s.centerLine / chartDataXS.constants.c4;
+      return sigma.toFixed(4);
+    }
+    return '0';
   };
 
   const handleRemoveOutOfControl = () => {
@@ -347,6 +449,9 @@ const Dashboard: React.FC = () => {
   }
 
   if (!data) return null;
+
+  const currentChartData = chartDataXR || chartDataXS;
+  const isXRRChart = chartType === 'X-R';
 
   return (
     <DashboardContainer>
@@ -387,6 +492,20 @@ const Dashboard: React.FC = () => {
             onChange={(e) => setUnit(e.target.value)}
             placeholder="Ej: mm, cm, kg, °C"
           />
+        </ConfigGroup>
+        <ConfigGroup>
+          <label>Tipo de Gráfico (Automático)</label>
+          <ChartTypeIndicator chartType={chartType}>
+  📊 {chartType === 'X-R' && 'Gráfico X-R (Medias y Rangos)'}
+  {chartType === 'X-s' && 'Gráfico X-s (Medias y Desviación Estándar)'}
+  {chartType === 'Attributes' && 'Gráfico de Atributos (p, np, c, u)'}
+  <br />
+  <span style={{ fontSize: '0.65rem', opacity: 0.8 }}>
+    {chartType === 'X-R' && '✓ Recomendado para n ≤ 9'}
+    {chartType === 'X-s' && '✓ Recomendado para n ≥ 10'}
+    {chartType === 'Attributes' && '✓ Para datos de conteo (defectos)'}
+  </span>
+</ChartTypeIndicator>
         </ConfigGroup>
         <ConfigGroup>
           <label>&nbsp;</label>
@@ -445,7 +564,7 @@ const Dashboard: React.FC = () => {
         </>
       )}
 
-      {phase === 'II' && chartData && hasSpecs && (
+      {phase === 'II' && currentChartData && hasSpecs && (
         <CapabilityResults
           cp={capabilityIndices.cp}
           cpk={capabilityIndices.cpk}
@@ -459,10 +578,10 @@ const Dashboard: React.FC = () => {
         />
       )}
 
-      {phase === 'II' && chartData && (
+      {phase === 'II' && currentChartData && (
         <ExecutiveReport
           fileName={fileName || 'Sin nombre'}
-          chartData={chartData}
+          chartData={currentChartData}
           capabilityIndices={capabilityIndices}
           unit={unit}
           lie={lie}
@@ -471,26 +590,28 @@ const Dashboard: React.FC = () => {
           rViolations={rViolations}
           removedSubgroups={removedSubgroups}
           originalSubgroupsCount={data?.numericData.length || 0}
-        />
-      )}
-        {phase === 'II' && chartData && (
-        <AdvancedMetrics 
-        currentN={selectedSubgroupSize} 
-        currentSamplingTime={1}
+          chartType={chartType as 'X-R' | 'X-s'} 
         />
       )}
 
-      {chartData && (
+      {phase === 'II' && currentChartData && (
+        <AdvancedMetrics 
+          currentN={selectedSubgroupSize} 
+          currentSamplingTime={1}
+        />
+      )}
+
+      {currentChartData && (
         <>
           <StatsGrid>
             <StatCard>
               <div className="label">Gran Media (X̄̄)</div>
-              <div className="value">{chartData.xbar.centerLine.toFixed(4)}</div>
+              <div className="value">{currentChartData.xbar.centerLine.toFixed(4)}</div>
               <span className="unit">{unit}</span>
             </StatCard>
             <StatCard>
-              <div className="label">Rango Promedio (R̄)</div>
-              <div className="value">{chartData.r.centerLine.toFixed(4)}</div>
+              <div className="label">{isXRRChart ? 'Rango Promedio (R̄)' : 's Promedio (s̄)'}</div>
+              <div className="value">{isXRRChart ? chartDataXR!.r.centerLine.toFixed(4) : chartDataXS!.s.centerLine.toFixed(4)}</div>
               <span className="unit">{unit}</span>
             </StatCard>
             <StatCard>
@@ -500,32 +621,60 @@ const Dashboard: React.FC = () => {
             </StatCard>
             <StatCard>
               <div className="label">Subgrupos Activos</div>
-              <div className="value">{chartData.subgroups.length}</div>
+              <div className="value">{currentChartData.subgroups.length}</div>
               <span className="unit">de {data.numericData.length}</span>
             </StatCard>
           </StatsGrid>
 
-          <ControlChart
-            title="Carta X̄ (Gráfico de Medias)"
-            values={chartData.xbar.values}
-            centerLine={chartData.xbar.centerLine}
-            ucl={chartData.xbar.ucl}
-            lcl={chartData.xbar.lcl}
-            outOfControlPoints={xbarOutOfControl}
-            ruleViolationPoints={xbarRuleViolations}
-            unit={unit}
-          />
+          {isXRRChart && chartDataXR && (
+            <>
+              <ControlChart
+                title="Carta X̄ (Gráfico de Medias)"
+                values={chartDataXR.xbar.values}
+                centerLine={chartDataXR.xbar.centerLine}
+                ucl={chartDataXR.xbar.ucl}
+                lcl={chartDataXR.xbar.lcl}
+                outOfControlPoints={xbarOutOfControl}
+                ruleViolationPoints={xbarRuleViolations}
+                unit={unit}
+              />
+              <ControlChart
+                title="Carta R (Gráfico de Rangos)"
+                values={chartDataXR.r.values}
+                centerLine={chartDataXR.r.centerLine}
+                ucl={chartDataXR.r.ucl}
+                lcl={chartDataXR.r.lcl}
+                outOfControlPoints={rOutOfControl}
+                ruleViolationPoints={rRuleViolations}
+                unit={unit}
+              />
+            </>
+          )}
 
-          <ControlChart
-            title="Carta R (Gráfico de Rangos)"
-            values={chartData.r.values}
-            centerLine={chartData.r.centerLine}
-            ucl={chartData.r.ucl}
-            lcl={chartData.r.lcl}
-            outOfControlPoints={rOutOfControl}
-            ruleViolationPoints={rRuleViolations}
-            unit={unit}
-          />
+          {!isXRRChart && chartDataXS && (
+            <>
+              <ControlChart
+                title="Carta X̄ (Gráfico de Medias)"
+                values={chartDataXS.xbar.values}
+                centerLine={chartDataXS.xbar.centerLine}
+                ucl={chartDataXS.xbar.ucl}
+                lcl={chartDataXS.xbar.lcl}
+                outOfControlPoints={xbarOutOfControl}
+                ruleViolationPoints={xbarRuleViolations}
+                unit={unit}
+              />
+              <ControlChart
+                title="Carta s (Gráfico de Desviación Estándar)"
+                values={chartDataXS.s.values}
+                centerLine={chartDataXS.s.centerLine}
+                ucl={chartDataXS.s.ucl}
+                lcl={chartDataXS.s.lcl}
+                outOfControlPoints={rOutOfControl}
+                ruleViolationPoints={rRuleViolations}
+                unit={unit}
+              />
+            </>
+          )}
         </>
       )}
     </DashboardContainer>

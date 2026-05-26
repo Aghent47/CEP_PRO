@@ -182,6 +182,7 @@ interface ExecutiveReportProps {
   rViolations: any[];
   removedSubgroups: number[];
   originalSubgroupsCount: number;
+  chartType: 'X-R' | 'X-s';  // AÑADIDO
 }
 
 const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
@@ -194,7 +195,8 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   xbarViolations,
   rViolations,
   removedSubgroups,
-  originalSubgroupsCount
+  originalSubgroupsCount,
+  chartType  // AÑADIDO
 }) => {
   const getClassification = () => {
     const cpk = capabilityIndices.cpk;
@@ -214,51 +216,15 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
     return { text: 'INESTABLE', color: '#ef4444', emoji: '⚠️' };
   };
 
-  const getRecommendation = () => {
-    const cpk = capabilityIndices.cpk;
-    const stability = getStabilityStatus();
-    
-    if (stability.text === 'INESTABLE') {
-      return "⚠️ El proceso NO es estable. Realice la Fase I de estabilización antes de interpretar la capacidad. Elimine las causas asignables identificadas en el panel de alarmas.";
+  const getChartTypeName = (): string => {
+    if (chartType === 'X-R') {
+      return 'X-R (Medias y Rangos)';
     }
-    
-    if (!cpk) {
-      return "📏 Ingrese los límites de especificación (LIE y LSE) para calcular la capacidad del proceso.";
-    }
-    
-    if (cpk >= 1.67) {
-      return "✅ El proceso es excelente. Mantenga el control con las cartas de control y continúe monitoreando. Realice auditorías periódicas para mantener este nivel.";
-    }
-    
-    if (cpk >= 1.33) {
-      return "✅ El proceso es muy capaz. Continúe con el monitoreo regular. Considere reducir el tamaño de muestra si el esfuerzo de inspección es alto.";
-    }
-    
-    if (cpk >= 1.0) {
-      if (capabilityIndices.cp && capabilityIndices.cpk && capabilityIndices.cpk < capabilityIndices.cp) {
-        return "📊 El proceso está descentrado. Ajuste la media del proceso hacia el objetivo para mejorar Cpk. Revise la calibración del equipo.";
-      }
-      return "⚠️ El proceso es marginalmente capaz. Requiere control estricto. Considere reducir la variabilidad o ajustar el centrado.";
-    }
-    
-    if (capabilityIndices.cpl && capabilityIndices.cpl < 1.0 && capabilityIndices.cpu && capabilityIndices.cpu < 1.0) {
-      return "🔴 El proceso no es capaz por alta variabilidad y mal centrado. Reduzca la variabilidad y centre el proceso. Revise las 6M (Materiales, Máquinas, Métodos, Medición, Mano de obra, Medio ambiente).";
-    }
-    
-    if (capabilityIndices.cpl && capabilityIndices.cpl < 1.0) {
-      return "🔴 El proceso no es capaz por el límite inferior. Revise problemas con materiales, configuración o ajustes que afecten el límite inferior de especificación.";
-    }
-    
-    if (capabilityIndices.cpu && capabilityIndices.cpu < 1.0) {
-      return "🔴 El proceso no es capaz por el límite superior. Revise desgaste de herramientas, temperatura, presión u otros factores que afecten el límite superior.";
-    }
-    
-    return "🔴 El proceso no es capaz. Requiere acciones correctivas inmediatas. Realice un análisis de causas raíz.";
+    return 'X-s (Medias y Desviación Estándar)';
   };
 
   const classification = getClassification();
   const stability = getStabilityStatus();
-  const totalViolations = xbarViolations.length + rViolations.length;
 
   const exportToPDF = async () => {
     const reportElement = document.getElementById('report-content');
@@ -288,7 +254,7 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
     const headers = ['Indicador', 'Valor', 'Unidad', 'Interpretación'];
     const rows = [
       ['Gran Media (X̄̄)', chartData?.xbar.centerLine.toFixed(4) || '—', unit, 'Media del proceso'],
-      ['Sigma del Proceso', (chartData?.r.centerLine / chartData?.constants.d2).toFixed(4) || '—', unit, 'Desviación estándar'],
+      ['Sigma del Proceso', (chartData?.r?.centerLine / chartData?.constants?.d2 || chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4), unit, 'Desviación estándar'],
       ['Cp', capabilityIndices.cp?.toFixed(4) || '—', '', 'Capacidad potencial'],
       ['Cpk', capabilityIndices.cpk?.toFixed(4) || '—', '', 'Capacidad real'],
       ['Cpl', capabilityIndices.cpl?.toFixed(4) || '—', '', 'Capacidad límite inferior'],
@@ -314,29 +280,32 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   };
 
   const exportToTXT = () => {
+    const sigmaValue = chartData?.r?.centerLine 
+      ? (chartData.r.centerLine / chartData.constants.d2).toFixed(4)
+      : (chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4);
+    
     const content = `============================================================
         REPORTE EJECUTIVO DE CAPACIDAD
 ============================================================
 
 Proceso: ${fileName}
 Fecha: ${new Date().toLocaleString()}
-Tipo de gráfico: X-R (n=${chartData?.constants.n}, k=${chartData?.subgroups.length})
+Tipo de gráfico: ${getChartTypeName()} (n=${chartData?.constants?.n || chartData?.constants?.n || '?'}, k=${chartData?.subgroups.length || 0})
 Unidad: ${unit}
 
 ------------------------------------------------------------
 ESTABILIDAD: ${stability.text}
 ------------------------------------------------------------
-${totalViolations > 0 ? `Alertas detectadas: ${totalViolations} violación(es) de reglas` : 'Sin puntos fuera de control'}
 Subgrupos eliminados: ${removedSubgroups.length > 0 ? removedSubgroups.map(i => i + 1).join(', ') : 'Ninguno'}
 
 ------------------------------------------------------------
 CAPACIDAD DEL PROCESO
 ------------------------------------------------------------
-Cp = ${capabilityIndices.cp?.toFixed(4) || 'No calculado'} → ${!capabilityIndices.cp ? 'No calculado' : capabilityIndices.cp >= 1.33 ? 'Capaz' : capabilityIndices.cp >= 1.0 ? 'Marginalmente capaz' : 'No capaz'}
-Cpk = ${capabilityIndices.cpk?.toFixed(4) || 'No calculado'} → ${!capabilityIndices.cpk ? 'No calculado' : capabilityIndices.cpk >= 1.33 ? 'Capaz' : capabilityIndices.cpk >= 1.0 ? 'Marginalmente capaz' : 'No capaz'}
+Cp = ${capabilityIndices.cp?.toFixed(4) || 'No calculado'}
+Cpk = ${capabilityIndices.cpk?.toFixed(4) || 'No calculado'}
 Cpl = ${capabilityIndices.cpl?.toFixed(4) || 'No calculado'}
 Cpu = ${capabilityIndices.cpu?.toFixed(4) || 'No calculado'}
-Índice K = ${capabilityIndices.k?.toFixed(1) || 'No calculado'}% → ${capabilityIndices.k ? (capabilityIndices.k < 25 ? 'Centrado aceptable' : capabilityIndices.k < 50 ? 'Descentramiento moderado' : 'Descentramiento severo') : 'No calculado'}
+Índice K = ${capabilityIndices.k?.toFixed(1) || 'No calculado'}%
 
 ------------------------------------------------------------
 DESEMPEÑO ESPERADO
@@ -348,11 +317,6 @@ PPM esperado: ${capabilityIndices.ppm ? Math.round(capabilityIndices.ppm).toLoca
 ------------------------------------------------------------
 CLASIFICACIÓN FINAL: ${classification.grade} - ${classification.text}
 ------------------------------------------------------------
-
-------------------------------------------------------------
-RECOMENDACIÓN
-------------------------------------------------------------
-${getRecommendation()}
 
 ============================================================
     `;
@@ -403,7 +367,7 @@ ${getRecommendation()}
           </div>
           <div className="info-row">
             <span className="label">Tipo de gráfico:</span>
-            <span className="value">X-R (n={chartData?.constants.n}, k={chartData?.subgroups.length})</span>
+            <span className="value">{getChartTypeName()} (n={chartData?.constants?.n || chartData?.constants?.n || '?'}, k={chartData?.subgroups.length || 0})</span>
           </div>
           <div className="info-row">
             <span className="label">Unidad de medida:</span>
@@ -427,20 +391,6 @@ ${getRecommendation()}
                 : 'El proceso presenta causas asignables que requieren atención'}
             </div>
           </div>
-          <div className="info-row">
-            <span className="label">Subgrupos totales:</span>
-            <span className="value">{originalSubgroupsCount}</span>
-          </div>
-          <div className="info-row">
-            <span className="label">Subgrupos activos:</span>
-            <span className="value">{chartData?.subgroups.length} {removedSubgroups.length > 0 ? `(${removedSubgroups.length} eliminados)` : ''}</span>
-          </div>
-          {totalViolations > 0 && (
-            <div className="info-row">
-              <span className="label">Alertas detectadas:</span>
-              <span className="value" style={{ color: '#ef4444' }}>{totalViolations} violación(es) de reglas</span>
-            </div>
-          )}
         </div>
         
         <hr />
@@ -451,16 +401,10 @@ ${getRecommendation()}
             <div className="metric-item">
               <div className="metric-label">Cp (Potencial)</div>
               <div className="metric-value">{capabilityIndices.cp?.toFixed(4) || '—'}</div>
-              <div className="metric-status" style={{ color: capabilityIndices.cp && capabilityIndices.cp >= 1.33 ? '#10b981' : '#ef4444' }}>
-                {capabilityIndices.cp && capabilityIndices.cp >= 1.33 ? '✓ Capaz' : capabilityIndices.cp && capabilityIndices.cp >= 1.0 ? '⚠️ Marginal' : '✗ No capaz'}
-              </div>
             </div>
             <div className="metric-item">
               <div className="metric-label">Cpk (Real)</div>
               <div className="metric-value">{capabilityIndices.cpk?.toFixed(4) || '—'}</div>
-              <div className="metric-status" style={{ color: capabilityIndices.cpk && capabilityIndices.cpk >= 1.33 ? '#10b981' : '#ef4444' }}>
-                {capabilityIndices.cpk && capabilityIndices.cpk >= 1.33 ? '✓ Capaz' : capabilityIndices.cpk && capabilityIndices.cpk >= 1.0 ? '⚠️ Marginal' : '✗ No capaz'}
-              </div>
             </div>
             <div className="metric-item">
               <div className="metric-label">Cpl (Límite Inf.)</div>
@@ -477,14 +421,11 @@ ${getRecommendation()}
           <h4>🎯 Desempeño Esperado</h4>
           <div className="metrics-grid">
             <div className="metric-item">
-              <div className="metric-label">Índice K (Descentramiento)</div>
+              <div className="metric-label">Índice K</div>
               <div className="metric-value">{capabilityIndices.k?.toFixed(1) || '—'}%</div>
-              <div className="metric-status">
-                {capabilityIndices.k ? (capabilityIndices.k < 25 ? '✓ Centrado' : capabilityIndices.k < 50 ? '⚠️ Moderado' : '✗ Severo') : ''}
-              </div>
             </div>
             <div className="metric-item">
-              <div className="metric-label">Nivel Sigma (Z bench)</div>
+              <div className="metric-label">Nivel Sigma</div>
               <div className="metric-value">{capabilityIndices.sigmaLevel?.toFixed(2) || '—'} σ</div>
             </div>
             <div className="metric-item">
@@ -505,14 +446,6 @@ ${getRecommendation()}
           <div className="classification" style={{ background: `${classification.color}15`, border: `1px solid ${classification.color}` }}>
             <div className="grade" style={{ color: classification.color }}>{classification.grade}</div>
             <div className="text" style={{ color: classification.color }}>{classification.text}</div>
-          </div>
-        </div>
-        
-        <div className="section">
-          <h4>🎯 Recomendación</h4>
-          <div className="recommendation">
-            <div className="title">Acciones Sugeridas</div>
-            <div className="text">{getRecommendation()}</div>
           </div>
         </div>
         
