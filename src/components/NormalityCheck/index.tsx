@@ -1,8 +1,160 @@
 import React, { useState, useEffect, useRef } from 'react';
 import styled from 'styled-components';
 import * as echarts from 'echarts';
-import { testNormality, type NormalityResult } from '../../utils/normalityTests';
 
+// ============ FUNCIONES DE NORMALIDAD SIMPLIFICADAS ============
+interface NormalityResult {
+  isNormal: boolean;
+  shapiroWilk: { statistic: number; pValue: number; interpretation: string };
+  skewness: { value: number; interpretation: string };
+  kurtosis: { value: number; interpretation: string };
+  recommendations: string[];
+  qqData: { theoretical: number[]; sample: number[] };
+}
+
+function calculateSkewness(data: number[]): number {
+  const n = data.length;
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n;
+  const stdDev = Math.sqrt(variance);
+  
+  if (stdDev === 0) return 0;
+  const skewness = data.reduce((acc, val) => acc + Math.pow((val - mean) / stdDev, 3), 0) / n;
+  return skewness;
+}
+
+function calculateKurtosis(data: number[]): number {
+  const n = data.length;
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n;
+  const stdDev = Math.sqrt(variance);
+  
+  if (stdDev === 0) return 3;
+  const kurtosis = data.reduce((acc, val) => acc + Math.pow((val - mean) / stdDev, 4), 0) / n;
+  return kurtosis;
+}
+
+function calculateShapiroWilk(data: number[]): { statistic: number; pValue: number } {
+  const n = data.length;
+  const sortedData = [...data].sort((a, b) => a - b);
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  
+  const totalSS = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0);
+  
+  if (totalSS === 0) return { statistic: 1, pValue: 1 };
+  
+  // Coeficientes aproximados
+  const aCoeffs: number[] = [];
+  for (let i = 0; i < n; i++) {
+    const m = i + 1;
+    const approx = Math.sqrt(2 / (n + 1)) * (m - (n + 1) / 2);
+    aCoeffs.push(approx);
+  }
+  
+  let numerator = 0;
+  for (let i = 0; i < n; i++) {
+    numerator += aCoeffs[i] * sortedData[i];
+  }
+  numerator = Math.pow(numerator, 2);
+  
+  const W = numerator / totalSS;
+  
+  let pValue = 0.5;
+  if (W > 0.98) pValue = 0.8;
+  else if (W > 0.95) pValue = 0.5;
+  else if (W > 0.90) pValue = 0.2;
+  else if (W > 0.85) pValue = 0.05;
+  else pValue = 0.01;
+  
+  return { statistic: W, pValue };
+}
+
+function generateQQData(data: number[]): { theoretical: number[]; sample: number[] } {
+  const sortedData = [...data].sort((a, b) => a - b);
+  const n = data.length;
+  const mean = data.reduce((a, b) => a + b, 0) / n;
+  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1);
+  const stdDev = Math.sqrt(variance);
+  
+  const theoretical: number[] = [];
+  const sample: number[] = [];
+  
+  for (let i = 0; i < n; i++) {
+    const probability = (i + 0.5) / n;
+    // Aproximación del percentil normal usando función inversa
+    let z = 0;
+    if (probability < 0.5) {
+      z = -Math.sqrt(2) * Math.sqrt(-Math.log(2 * probability));
+    } else {
+      z = Math.sqrt(2) * Math.sqrt(-Math.log(2 * (1 - probability)));
+    }
+    theoretical.push(z);
+    sample.push(sortedData[i]);
+  }
+  
+  return { theoretical, sample };
+}
+
+function testNormality(data: number[]): NormalityResult {
+  if (data.length < 5) {
+    return {
+      isNormal: false,
+      shapiroWilk: { statistic: 0, pValue: 0, interpretation: "Muestra demasiado pequeña" },
+      skewness: { value: 0, interpretation: "No calculable" },
+      kurtosis: { value: 0, interpretation: "No calculable" },
+      recommendations: ["Se necesitan al menos 5 datos para evaluar normalidad."],
+      qqData: { theoretical: [], sample: [] }
+    };
+  }
+  
+  const skewness = calculateSkewness(data);
+  const kurtosis = calculateKurtosis(data);
+  const shapiro = calculateShapiroWilk(data);
+  const qqData = generateQQData(data);
+  
+  const isNormalByShapiro = shapiro.pValue >= 0.05;
+  const isNormalBySkewness = Math.abs(skewness) < 1;
+  const isNormalByKurtosis = Math.abs(kurtosis - 3) < 1;
+  
+  const isNormal = isNormalByShapiro && isNormalBySkewness && isNormalByKurtosis;
+  
+  const recommendations: string[] = [];
+  if (!isNormal) {
+    recommendations.push("⚠️ Los datos NO siguen una distribución normal.");
+    recommendations.push("📊 Se recomienda una de las siguientes opciones:");
+    if (skewness > 0.5) {
+      recommendations.push("   📌 Opción 1: Aplicar transformación Logarítmica (λ=0)");
+      recommendations.push("   📌 Opción 2: Aplicar transformación Raíz Cuadrada (λ=0.5)");
+    }
+    if (kurtosis > 4) {
+      recommendations.push("   📌 Opción 3: Aplicar transformación Box-Cox");
+    }
+    recommendations.push("   📌 Opción 4: Usar límites empíricos basados en percentiles");
+  } else {
+    recommendations.push("✅ Los datos son normales. Puede proceder con el análisis.");
+  }
+  
+  return {
+    isNormal,
+    shapiroWilk: {
+      statistic: shapiro.statistic,
+      pValue: shapiro.pValue,
+      interpretation: shapiro.pValue >= 0.05 ? "Normal" : "No normal"
+    },
+    skewness: {
+      value: skewness,
+      interpretation: Math.abs(skewness) < 0.5 ? "Simétrico" : Math.abs(skewness) < 1 ? "Moderadamente sesgado" : "Fuertemente sesgado"
+    },
+    kurtosis: {
+      value: kurtosis,
+      interpretation: Math.abs(kurtosis - 3) < 0.5 ? "Mesocúrtico" : kurtosis > 3.5 ? "Leptocúrtico" : "Platicúrtico"
+    },
+    recommendations,
+    qqData
+  };
+}
+
+// ============ ESTILOS ============
 const Container = styled.div`
   background: var(--bg-card);
   border-radius: 16px;
@@ -45,7 +197,7 @@ const ResultBox = styled.div<{ isNormal: boolean }>`
 
 const MetricsGrid = styled.div`
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 1rem;
   margin-bottom: 1rem;
 `;
@@ -106,6 +258,7 @@ const ButtonsContainer = styled.div`
   gap: 1rem;
   margin-top: 1rem;
   justify-content: flex-end;
+  flex-wrap: wrap;
 `;
 
 const Button = styled.button<{ variant?: 'primary' | 'warning' | 'success' }>`
@@ -131,8 +284,11 @@ const Button = styled.button<{ variant?: 'primary' | 'warning' | 'success' }>`
 
 const ChartWrapper = styled.div`
   width: 100%;
-  height: 400px;
+  height: 450px;
   margin-top: 1rem;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 0.5rem;
 `;
 
 interface NormalityCheckProps {
@@ -143,19 +299,31 @@ interface NormalityCheckProps {
 
 const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTransform }) => {
   const [result, setResult] = useState<NormalityResult | null>(null);
-  const [selectedAction, setSelectedAction] = useState<string | null>(null);
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
   useEffect(() => {
+    console.log('=== NORMALITY CHECK ===');
+    console.log('Datos recibidos:', data.length);
+    console.log('Primeros 5 datos:', data.slice(0, 5));
+    
     if (data.length > 0) {
       const normalityResult = testNormality(data);
+      console.log('Resultado normalidad:', normalityResult.isNormal);
+      console.log('QQ Data:', normalityResult.qqData.theoretical.length);
       setResult(normalityResult);
     }
   }, [data]);
 
   useEffect(() => {
-    if (!chartRef.current || !result) return;
+    if (!chartRef.current || !result || result.qqData.theoretical.length === 0) {
+      console.log('No se puede renderizar gráfico: chartRef o result no disponible');
+      return;
+    }
+
+    console.log('Renderizando Q-Q Plot...');
+    console.log('Teóricos:', result.qqData.theoretical.length);
+    console.log('Muestrales:', result.qqData.sample.length);
 
     if (chartInstance.current) {
       chartInstance.current.dispose();
@@ -166,49 +334,74 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
     const { theoretical, sample } = result.qqData;
     
     // Calcular línea de referencia
-    const meanSample = sample.reduce((a, b) => a + b, 0) / sample.length;
-    const stdSample = Math.sqrt(sample.reduce((acc, val) => acc + Math.pow(val - meanSample, 2), 0) / (sample.length - 1));
+    const n = theoretical.length;
+    const sumX = theoretical.reduce((a, b) => a + b, 0);
+    const sumY = sample.reduce((a, b) => a + b, 0);
+    const sumXY = theoretical.reduce((acc, x, i) => acc + x * sample[i], 0);
+    const sumX2 = theoretical.reduce((acc, x) => acc + x * x, 0);
     
-    const minTheo = Math.min(...theoretical);
-    const maxTheo = Math.max(...theoretical);
-    const refLine = [minTheo, maxTheo].map(z => meanSample + stdSample * z);
-
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+    
+    const minX = Math.min(...theoretical);
+    const maxX = Math.max(...theoretical);
+    const refLine = [
+      [minX, intercept + slope * minX],
+      [maxX, intercept + slope * maxX]
+    ];
+    
+    // Datos para scatter
+    const scatterData = theoretical.map((t, i) => [t, sample[i]]);
+    
     const option: echarts.EChartsOption = {
       backgroundColor: 'transparent',
-      title: { show: false },
+      title: {
+        show: true,
+        text: 'Gráfico Q-Q (Quantile-Quantile Plot)',
+        textStyle: { color: '#e8edf5', fontSize: 13 },
+        left: 'center',
+        top: 0
+      },
       tooltip: {
-        trigger: 'axis',
+        trigger: 'item',
         backgroundColor: 'rgba(26, 34, 53, 0.95)',
         borderColor: '#2a3448',
         borderWidth: 1,
         textStyle: { color: '#e8edf5', fontSize: 12 },
         formatter: (params: any) => {
-          if (!params || params.length === 0) return '';
-          return `
-            <strong>Q-Q Plot</strong><br/>
-            Cuantil teórico: ${params[0].value[0].toFixed(4)}<br/>
-            Cuantil muestral: ${params[0].value[1].toFixed(4)}
-          `;
+          if (params.data && params.data.value) {
+            return `
+              <strong>📊 Punto Q-Q</strong><br/>
+              Teórico: ${params.data.value[0].toFixed(4)}<br/>
+              Muestral: ${params.data.value[1].toFixed(4)}
+            `;
+          }
+          return '';
         }
       },
       grid: {
-        left: '10%',
+        left: '12%',
         right: '8%',
-        top: '10%',
+        top: '15%',
         bottom: '10%',
-        containLabel: true
+        containLabel: true,
+        backgroundColor: 'rgba(26, 34, 53, 0.2)'
       },
       xAxis: {
-        name: 'Cuantiles teóricos (Normal)',
+        name: 'Cuantiles Teóricos',
+        nameLocation: 'middle',
+        nameGap: 35,
         type: 'value',
-        axisLabel: { color: '#8f9bb3', fontSize: 11 },
+        axisLabel: { color: '#8f9bb3', fontSize: 10 },
         axisLine: { lineStyle: { color: '#2a3448' } },
         splitLine: { lineStyle: { color: '#1a2235', type: 'dashed' } }
       },
       yAxis: {
-        name: 'Cuantiles muestrales',
+        name: 'Cuantiles Muestrales',
+        nameLocation: 'middle',
+        nameGap: 45,
         type: 'value',
-        axisLabel: { color: '#8f9bb3', fontSize: 11 },
+        axisLabel: { color: '#8f9bb3', fontSize: 10 },
         axisLine: { lineStyle: { color: '#2a3448' } },
         splitLine: { lineStyle: { color: '#1a2235', type: 'dashed' } }
       },
@@ -216,42 +409,58 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
         {
           name: 'Datos',
           type: 'scatter',
-          data: theoretical.map((t, i) => [t, sample[i]]),
+          data: scatterData,
           symbol: 'circle',
           symbolSize: 8,
-          itemStyle: { color: '#3b82f6' }
+          itemStyle: {
+            color: '#3b82f6',
+            borderColor: '#0a0e1a',
+            borderWidth: 1
+          },
+          emphasis: {
+            scale: 1.3,
+            itemStyle: { color: '#f59e0b' }
+          }
         },
         {
           name: 'Referencia Normal',
           type: 'line',
-          data: [
-            [minTheo, refLine[0]],
-            [maxTheo, refLine[1]]
-          ],
+          data: refLine,
           lineStyle: {
             color: '#ef4444',
-            width: 2,
-            type: 'dashed'
+            width: 2.5,
+            type: 'solid'
           },
           symbol: 'none'
         }
       ],
       legend: {
         data: ['Datos', 'Referencia Normal'],
-        textStyle: { color: '#8f9bb3', fontSize: 11 },
+        orient: 'horizontal',
         left: 'left',
-        top: 0
+        top: 30,
+        textStyle: { color: '#8f9bb3', fontSize: 11 }
       },
       toolbox: {
         feature: {
-          saveAsImage: { title: 'Guardar como imagen', name: 'qq_plot' }
-        }
+          saveAsImage: { title: 'Guardar como imagen' },
+          zoom: { title: { zoom: 'Zoom', back: 'Restablecer' } },
+          restore: { title: 'Restablecer' }
+        },
+        iconStyle: { borderColor: '#8f9bb3' }
       }
     };
 
     chartInstance.current.setOption(option);
+    console.log('Gráfico renderizado correctamente');
+
+    const handleResize = () => {
+      chartInstance.current?.resize();
+    };
+    window.addEventListener('resize', handleResize);
 
     return () => {
+      window.removeEventListener('resize', handleResize);
       chartInstance.current?.dispose();
     };
   }, [result]);
@@ -260,13 +469,16 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
     return (
       <Container>
         <Title>📊 Verificando normalidad...</Title>
+        <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '2rem' }}>
+          Analizando {data.length} datos...
+        </div>
       </Container>
     );
   }
 
   return (
     <Container>
-      <Title>📊 Verificación de Normalidad (Shapiro-Wilk)</Title>
+      <Title>📊 Verificación de Normalidad</Title>
       
       <ResultBox isNormal={result.isNormal}>
         <div className="status">
@@ -297,11 +509,10 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
         </MetricCard>
       </MetricsGrid>
       
-      <Title>📈 Gráfico Q-Q (Quantile-Quantile Plot)</Title>
       <ChartWrapper ref={chartRef} />
       
       <RecommendationsBox>
-        <div className="title">📋 Recomendaciones según el documento</div>
+        <div className="title">📋 Recomendaciones</div>
         {result.recommendations.map((rec, idx) => (
           <div key={idx} className="recommendation-item">{rec}</div>
         ))}
