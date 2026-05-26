@@ -13,6 +13,7 @@ import CapabilityInput from '../CapabilityInput';
 import CapabilityResults from '../CapabilityResults';
 import ExecutiveReport from '../ExecutiveReport';
 import AdvancedMetrics from '../AdvancedMetrics';
+import ProcessHistogram from '../ProcessHistogram';
 
 // ============ ESTILOS (igual que antes) ============
 const DashboardContainer = styled.div`
@@ -675,6 +676,30 @@ const Dashboard: React.FC = () => {
               />
             </>
           )}
+
+          {/* Histograma con Campana de Gauss */}
+{currentChartData && (
+  <ProcessHistogram
+    data={(() => {
+      // Extraer todos los datos originales
+      if (!data) return [];
+      const allData: number[] = [];
+      data.numericData.forEach(subgroup => {
+        subgroup.forEach(value => {
+          allData.push(value);
+        });
+      });
+      return allData;
+    })()}
+    mean={currentChartData.xbar.centerLine}
+    sigma={parseFloat(calculateProcessSigma())}
+    lie={lie}
+    lse={lse}
+    target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
+    unit={unit}
+    title="Distribución del Proceso vs Especificaciones"
+  />
+)}
         </>
       )}
     </DashboardContainer>
