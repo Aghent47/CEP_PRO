@@ -344,7 +344,28 @@ const Dashboard: React.FC = () => {
       setChartDataXS(null);
     }
   }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartDataXR, setChartDataXS, lie, lse, determineChartType]);
+  // En el Dashboard, añade esta función:
+const handleRemovePoints = useCallback((pointsToRemove: number[]) => {
+  // Convertir a números de subgrupo (0-index)
+  const pointsToRemoveSet = new Set(pointsToRemove);
+  
+  // Verificar que los puntos existen
+  if (chartDataXR || chartDataXS) {
+    const currentSubgroups = chartDataXR?.subgroups.length || chartDataXS?.subgroups.length || 0;
+    const validPoints = pointsToRemove.filter(p => p < currentSubgroups);
+    
+    if (validPoints.length > 0) {
+      setRemovedSubgroups(prev => [...new Set([...prev, ...validPoints])]);
+      
+      // Mostrar mensaje de confirmación
+      setSuccessMessage(`${validPoints.length} subgrupo(s) eliminado(s) correctamente. Recalculando...`);
+      setTimeout(() => setSuccessMessage(null), 3000);
+    }
+  }
+}, [chartDataXR, chartDataXS]);
 
+// Añadir estado para mensaje de éxito
+const [successMessage, setSuccessMessage] = useState<string | null>(null);
   // Efecto para detectar el tamaño real
   useEffect(() => {
     if (data && data.numericData.length > 0) {
@@ -558,12 +579,37 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
-      {hasViolations && phase === 'I' && (
-        <>
-          <AlarmPanel violations={xbarViolations} />
-          <AlarmPanel violations={rViolations} />
-        </>
-      )}
+{hasViolations && phase === 'I' && (
+  <>
+<AlarmPanel 
+  violations={xbarViolations} 
+  onPointClick={(point) => console.log('Punto clickeado:', point)}
+  onRemovePoints={handleRemovePoints}
+  chartType="xbar"
+  removedSubgroups={removedSubgroups}  // ← Añadir esta línea
+/>
+<AlarmPanel 
+  violations={rViolations}
+  onPointClick={(point) => console.log('Punto clickeado:', point)}
+  onRemovePoints={handleRemovePoints}
+  chartType="r"
+  removedSubgroups={removedSubgroups}  // ← Añadir esta línea
+/>
+  </>
+)}
+
+{successMessage && (
+  <div style={{ 
+    background: 'rgba(16, 185, 129, 0.1)', 
+    border: '1px solid #10b981',
+    borderRadius: '12px',
+    padding: '1rem',
+    marginBottom: '1rem',
+    color: '#6ee7b7'
+  }}>
+    ✅ {successMessage}
+  </div>
+)}
 
       {phase === 'II' && currentChartData && hasSpecs && (
         <CapabilityResults
@@ -606,7 +652,7 @@ const Dashboard: React.FC = () => {
         <>
           <StatsGrid>
             <StatCard>
-              <div className="label">Gran Media (X̄̄)</div>
+              <div className="label">Media del Proceso(X̄̄)</div>
               <div className="value">{currentChartData.xbar.centerLine.toFixed(4)}</div>
               <span className="unit">{unit}</span>
             </StatCard>
@@ -638,6 +684,7 @@ const Dashboard: React.FC = () => {
                 outOfControlPoints={xbarOutOfControl}
                 ruleViolationPoints={xbarRuleViolations}
                 unit={unit}
+                onPointClick={(point) => console.log('Clic en punto:', point)}
               />
               <ControlChart
                 title="Carta R (Gráfico de Rangos)"

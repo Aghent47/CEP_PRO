@@ -50,6 +50,13 @@ const ChartLegend = styled.div`
       height: 12px;
       border-radius: 50%;
     }
+    
+    .color-box-diamond {
+      width: 12px;
+      height: 12px;
+      transform: rotate(45deg);
+      border-radius: 2px;
+    }
   }
 `;
 
@@ -60,8 +67,9 @@ interface ControlChartProps {
   ucl: number;
   lcl: number;
   outOfControlPoints?: number[];
-  ruleViolationPoints?: number[];  // Añadido
+  ruleViolationPoints?: number[];
   unit?: string;
+  onPointClick?: (pointIndex: number) => void;  // Añadir esta línea
 }
 
 const ControlChart: React.FC<ControlChartProps> = ({
@@ -72,33 +80,26 @@ const ControlChart: React.FC<ControlChartProps> = ({
   lcl,
   outOfControlPoints = [],
   ruleViolationPoints = [],
-  unit = ""
+  unit = "",
+  onPointClick  // Añadir esta línea
 }) => {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  // Función para calcular el rango óptimo del eje Y
   const calculateYAxisRange = (): { min: number; max: number } => {
-    // Encontrar el valor mínimo y máximo de los datos
     const minDataValue = Math.min(...values);
     const maxDataValue = Math.max(...values);
-    
-    // Calcular un margen del 10% entre el límite y los datos
     const margin = (ucl - lcl) * 0.1;
     
-    // Si hay puntos fuera de control cerca de los límites, ajustamos
     let yMin = Math.min(lcl, minDataValue) - margin;
     let yMax = Math.max(ucl, maxDataValue) + margin;
     
-    // Asegurar que el límite superior no sea menor que LCS + 1 unidad
-    // y que el límite inferior no sea mayor que LCI - 1 unidad
     const lclMin = lcl - 1;
     const uclMax = ucl + 1;
     
     yMin = Math.min(yMin, lclMin);
     yMax = Math.max(yMax, uclMax);
     
-    // Ajustar para que el LCS y LCI sean visibles con un margen visual adecuado
     const range = yMax - yMin;
     const optimalMargin = range * 0.15;
     
@@ -119,7 +120,6 @@ const ControlChart: React.FC<ControlChartProps> = ({
 
     const subgroups = values.map((_, idx) => idx + 1);
     
-    // Crear serie de puntos fuera de control
     const outOfControlData = subgroups.map((_, idx) => {
       if (outOfControlPoints.includes(idx)) {
         return values[idx];
@@ -127,24 +127,25 @@ const ControlChart: React.FC<ControlChartProps> = ({
       return null;
     });
 
-    // Calcular rango óptimo del eje Y
+    const ruleViolationData = subgroups.map((_, idx) => {
+      if (ruleViolationPoints.includes(idx)) {
+        return values[idx];
+      }
+      return null;
+    });
+
     const yAxisRange = calculateYAxisRange();
 
     const option: echarts.EChartsOption = {
       backgroundColor: 'transparent',
-      title: {
-        show: false
-      },
+      title: { show: false },
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
         backgroundColor: 'rgba(26, 34, 53, 0.95)',
         borderColor: '#2a3448',
         borderWidth: 1,
-        textStyle: {
-          color: '#e8edf5',
-          fontSize: 12
-        },
+        textStyle: { color: '#e8edf5', fontSize: 12 },
         formatter: (params: any) => {
           if (!params || params.length === 0) return '';
           const dataPoint = params.find((p: any) => p.seriesName === 'Datos');
@@ -173,15 +174,8 @@ const ControlChart: React.FC<ControlChartProps> = ({
         nameGap: 35,
         type: 'category',
         data: subgroups,
-        axisLabel: {
-          color: '#8f9bb3',
-          fontSize: 11,
-          interval: 'auto',
-          rotate: 0
-        },
-        axisLine: {
-          lineStyle: { color: '#2a3448' }
-        },
+        axisLabel: { color: '#8f9bb3', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#2a3448' } },
         axisTick: { show: false }
       },
       yAxis: {
@@ -191,17 +185,9 @@ const ControlChart: React.FC<ControlChartProps> = ({
         type: 'value',
         min: yAxisRange.min,
         max: yAxisRange.max,
-        axisLabel: {
-          color: '#8f9bb3',
-          fontSize: 11,
-          formatter: (value: number) => value.toFixed(4)
-        },
-        axisLine: {
-          lineStyle: { color: '#2a3448' }
-        },
-        splitLine: {
-          lineStyle: { color: '#1a2235', type: 'dashed' }
-        }
+        axisLabel: { color: '#8f9bb3', fontSize: 11, formatter: (value: number) => value.toFixed(4) },
+        axisLine: { lineStyle: { color: '#2a3448' } },
+        splitLine: { lineStyle: { color: '#1a2235', type: 'dashed' } }
       },
       series: [
         {
@@ -211,26 +197,11 @@ const ControlChart: React.FC<ControlChartProps> = ({
           smooth: false,
           symbol: 'circle',
           symbolSize: 8,
-          lineStyle: {
-            color: '#3b82f6',
-            width: 2,
-            type: 'solid'
-          },
-          itemStyle: {
-            color: '#3b82f6',
-            borderColor: '#0a0e1a',
-            borderWidth: 2
-          },
+          lineStyle: { color: '#3b82f6', width: 2, type: 'solid' },
+          itemStyle: { color: '#3b82f6', borderColor: '#0a0e1a', borderWidth: 2 },
           connectNulls: false,
-          areaStyle: {
-            color: 'rgba(59, 130, 246, 0.05)'
-          },
-          emphasis: {
-            focus: 'series',
-            lineStyle: {
-              width: 3
-            }
-          }
+          areaStyle: { color: 'rgba(59, 130, 246, 0.05)' },
+          emphasis: { focus: 'series', lineStyle: { width: 3 } }
         },
         {
           name: 'Puntos Fuera de Control',
@@ -238,13 +209,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
           data: outOfControlData,
           symbol: 'circle',
           symbolSize: 14,
-          itemStyle: {
-            color: '#ef4444',
-            borderColor: '#0a0e1a',
-            borderWidth: 2
-          },
-          
-          
+          itemStyle: { color: '#ef4444', borderColor: '#0a0e1a', borderWidth: 2 },
           tooltip: {
             formatter: (params: any) => {
               return `
@@ -258,39 +223,28 @@ const ControlChart: React.FC<ControlChartProps> = ({
           }
         },
         {
-  name: 'Violaciones de Reglas',
-  type: 'scatter',
-  data: ruleViolationPoints.map(idx => ({
-    value: values[idx],
-    idx: idx
-  })),
-  symbol: 'diamond',
-  symbolSize: 16,
-  itemStyle: {
-    color: '#f59e0b',
-    borderColor: '#0a0e1a',
-    borderWidth: 2
-  },
-  tooltip: {
-    formatter: (params: any) => {
-      return `
-        <strong>⚠️ VIOLACIÓN DE REGLA</strong><br/>
-        Subgrupo ${params.dataIndex + 1}<br/>
-        Valor: ${params.value.toFixed(4)} ${unit}<br/>
-        Este punto viola una o más reglas de Nelson
-      `;
-    }
-  }
-},
+          name: 'Violaciones de Reglas',
+          type: 'scatter',
+          data: ruleViolationData,
+          symbol: 'diamond',
+          symbolSize: 16,
+          itemStyle: { color: '#f59e0b', borderColor: '#0a0e1a', borderWidth: 2 },
+          tooltip: {
+            formatter: (params: any) => {
+              return `
+                <strong>⚠️ VIOLACIÓN DE REGLA</strong><br/>
+                Subgrupo ${params.dataIndex + 1}<br/>
+                Valor: ${params.value.toFixed(4)} ${unit}<br/>
+                Este punto viola una o más reglas de Nelson
+              `;
+            }
+          }
+        },
         {
           name: 'Límite Superior (LCS)',
           type: 'line',
           data: Array(values.length).fill(ucl),
-          lineStyle: {
-            color: '#ef4444',
-            width: 2.5,
-            type: 'dashed'
-          },
+          lineStyle: { color: '#ef4444', width: 2.5, type: 'dashed' },
           symbol: 'none',
           smooth: false
         },
@@ -298,73 +252,55 @@ const ControlChart: React.FC<ControlChartProps> = ({
           name: 'Límite Inferior (LCI)',
           type: 'line',
           data: Array(values.length).fill(lcl),
-          lineStyle: {
-            color: '#ef4444',
-            width: 2.5,
-            type: 'dashed'
-          },
+          lineStyle: { color: '#ef4444', width: 2.5, type: 'dashed' },
           symbol: 'none'
         },
         {
           name: 'Línea Central (LC)',
           type: 'line',
           data: Array(values.length).fill(centerLine),
-          lineStyle: {
-            color: '#10b981',
-            width: 2.5,
-            type: 'solid'
-          },
+          lineStyle: { color: '#10b981', width: 2.5, type: 'solid' },
           symbol: 'none'
         }
       ],
       legend: {
-        data: ['Datos', 'Puntos Fuera de Control', 'Límite Superior (LCS)', 'Límite Inferior (LCI)', 'Línea Central (LC)'],
+        data: ['Datos', 'Puntos Fuera de Control', 'Violaciones de Reglas', 'Límite Superior (LCS)', 'Límite Inferior (LCI)', 'Línea Central (LC)'],
         orient: 'horizontal',
         left: 'left',
         top: 0,
-        textStyle: {
-          color: '#8f9bb3',
-          fontSize: 11
-        },
+        textStyle: { color: '#8f9bb3', fontSize: 11 },
         itemWidth: 25,
-        itemHeight: 12,
-        formatter: (name: string) => {
-          const legendMap: Record<string, string> = {
-            'Datos': '📊 Datos',
-            'Puntos Fuera de Control': '⚠️ Fuera de Control',
-            'Límite Superior (LCS)': '📈 LCS (3σ)',
-            'Límite Inferior (LCI)': '📉 LCI (3σ)',
-            'Línea Central (LC)': '⚫ LC (Media)'
-          };
-          return legendMap[name] || name;
-        }
+        itemHeight: 12
       },
       toolbox: {
         feature: {
-          saveAsImage: { 
-            title: 'Guardar como imagen',
-            name: `grafico_control_${title.replace(/\s/g, '_')}`
-          },
-          zoom: { 
-            title: { 
-              zoom: 'Zoom',
-              back: 'Restablecer zoom'
-            }
-          },
+          saveAsImage: { title: 'Guardar como imagen', name: `grafico_control_${title.replace(/\s/g, '_')}` },
+          zoom: { title: { zoom: 'Zoom', back: 'Restablecer zoom' } },
           restore: { title: 'Restablecer' }
         },
-        iconStyle: {
-          borderColor: '#8f9bb3'
-        },
-        emphasis: {
-          iconStyle: {
-            borderColor: '#3b82f6'
-          }
-        }
+        iconStyle: { borderColor: '#8f9bb3' },
+        emphasis: { iconStyle: { borderColor: '#3b82f6' } }
       }
     };
 
     chartInstance.current.setOption(option);
+
+    // ============ EVENTO DE CLIC PARA SELECCIONAR PUNTOS ============
+    chartInstance.current.on('click', (params: any) => {
+      if (params.componentType === 'series') {
+        if (params.seriesName === 'Puntos Fuera de Control' && params.dataIndex !== undefined) {
+          if (onPointClick) {
+            onPointClick(params.dataIndex);
+          }
+        }
+        if (params.seriesName === 'Violaciones de Reglas' && params.dataIndex !== undefined) {
+          if (onPointClick) {
+            onPointClick(params.dataIndex);
+          }
+        }
+      }
+    });
+    // ===============================================================
 
     const handleResize = () => {
       chartInstance.current?.resize();
@@ -375,7 +311,7 @@ const ControlChart: React.FC<ControlChartProps> = ({
       window.removeEventListener('resize', handleResize);
       chartInstance.current?.dispose();
     };
-  }, [values, centerLine, ucl, lcl, outOfControlPoints, title, unit]);
+  }, [values, centerLine, ucl, lcl, outOfControlPoints, ruleViolationPoints, title, unit, onPointClick]);
 
   return (
     <ChartContainer>
@@ -388,7 +324,11 @@ const ControlChart: React.FC<ControlChartProps> = ({
         </div>
         <div className="legend-item">
           <div className="color-box-point" style={{ background: '#ef4444' }}></div>
-          <span>Punto fuera de control</span>
+          <span>Punto fuera de control (Regla 1) - Clic para seleccionar</span>
+        </div>
+        <div className="legend-item">
+          <div className="color-box-diamond" style={{ background: '#f59e0b' }}></div>
+          <span>Violación de reglas (Reglas 2-8) - Clic para seleccionar</span>
         </div>
         <div className="legend-item">
           <div className="color-box-line" style={{ background: '#ef4444', height: '3px' }}></div>
