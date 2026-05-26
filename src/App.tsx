@@ -49,8 +49,8 @@ const App: React.FC = () => {
   return (
     <AppContainer>
       <Header>
-        <h1>SPC Quality Dashboard</h1>
-        <p>Control Estadístico de Procesos | Monitoreo en Tiempo Real</p>
+        <h1>Quality Core</h1>
+        <p>Statistical Process Control Software</p>
       </Header>
       
       <Container>
