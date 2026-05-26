@@ -74,8 +74,8 @@ const App: React.FC = () => {
         <LogoContainer>
           <img src={logo} alt="Logo" />
           <TitleContainer>
-            <h1>SPC Quality Dashboard</h1>
-            <p>Control Estadístico de Procesos | Monitoreo en Tiempo Real</p>
+            <h1>QUALITY CORE</h1>
+            <p>Statistical Process Control Software</p>
           </TitleContainer>
         </LogoContainer>
       </Header>
