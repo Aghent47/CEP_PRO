@@ -81,7 +81,7 @@ export function calculateShapiroWilk(data: number[]): { statistic: number; pValu
   const W = numerator / totalSS;
   
   // Aproximación del p-valor
-  const pValue = approximatePValue(W, n);
+  const pValue = approximatePValue(W);
   
   return { statistic: W, pValue };
 }
@@ -104,7 +104,7 @@ function generateACoefficients(n: number): number[] {
 /**
  * Aproximación del p-valor para Shapiro-Wilk
  */
-function approximatePValue(W: number, n: number): number {
+function approximatePValue(W: number): number {
   // Aproximación simple del p-valor
   // Valores altos de W (>0.95) indican normalidad
   if (W > 0.98) return 0.8;
@@ -140,7 +140,7 @@ function getRecommendations(
   isNormal: boolean,
   skewness: number,
   kurtosis: number,
-  pValue: number
+  //pValue: number
 ): string[] {
   const recommendations: string[] = [];
   
@@ -174,9 +174,9 @@ function getRecommendations(
 export function generateQQData(data: number[]): { theoretical: number[]; sample: number[] } {
   const sortedData = [...data].sort((a, b) => a - b);
   const n = data.length;
-  const mean = data.reduce((a, b) => a + b, 0) / n;
-  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1);
-  const stdDev = Math.sqrt(variance);
+  //const mean = data.reduce((a, b) => a + b, 0) / n;
+  //const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1);
+  //const stdDev = Math.sqrt(variance);
   
   const theoretical: number[] = [];
   const sample: number[] = [];
@@ -235,7 +235,7 @@ export function testNormality(data: number[]): NormalityResult {
   // Decisión final
   const isNormal = isNormalByShapiro && isNormalBySkewness && isNormalByKurtosis;
   
-  const recommendations = getRecommendations(isNormal, skewness, kurtosis, shapiro.pValue);
+  const recommendations = getRecommendations(isNormal, skewness, kurtosis);
   
   return {
     isNormal,

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React from 'react';
 import styled from 'styled-components';
 import FileUploader from './components/FileUploader';
 import Dashboard from './components/Dashboard';
 import AttributeDashboard from './components/AttributeDashboard';
 import DataTypeSelector from './components/DataTypeSelector';
 import { useDataStore } from './store/dataStore';
-import logo from './assets/logo.png';  // ← Importar el logo
+import logo from './assets/logo.png';
 
 const AppContainer = styled.div`
   min-height: 100vh;
@@ -74,8 +74,8 @@ const App: React.FC = () => {
         <LogoContainer>
           <img src={logo} alt="Logo" />
           <TitleContainer>
-            <h1>Quality Core</h1>
-            <p>Statistical Process Control Software</p>
+            <h1>SPC Quality Dashboard</h1>
+            <p>Control Estadístico de Procesos | Monitoreo en Tiempo Real</p>
           </TitleContainer>
         </LogoContainer>
       </Header>

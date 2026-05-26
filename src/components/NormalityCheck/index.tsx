@@ -72,9 +72,9 @@ function calculateShapiroWilk(data: number[]): { statistic: number; pValue: numb
 function generateQQData(data: number[]): { theoretical: number[]; sample: number[] } {
   const sortedData = [...data].sort((a, b) => a - b);
   const n = data.length;
-  const mean = data.reduce((a, b) => a + b, 0) / n;
-  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1);
-  const stdDev = Math.sqrt(variance);
+  //const mean = data.reduce((a, b) => a + b, 0) / n;
+  //const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / (n - 1);
+  //const stdDev = Math.sqrt(variance);
   
   const theoretical: number[] = [];
   const sample: number[] = [];

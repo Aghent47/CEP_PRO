@@ -3,7 +3,6 @@ import styled from 'styled-components';
 import * as echarts from 'echarts';
 import type { EChartsOption, LineSeriesOption } from 'echarts';
 import {
-  calculatePower,
   analyzeSamplingStrategies,
   getPowerTable,
   getOCCurveData,

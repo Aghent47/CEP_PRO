@@ -214,8 +214,8 @@ export function getOCCurveData(n: number): { deltas: number[]; beta: number[]; p
 export function getPerformanceRecommendation(
   arl0: number,
   arl1: number,
-  ats0Hours: number,
-  ats1Hours: number
+  //ats0Hours: number,
+  //ats1Hours: number
 ): string {
   if (arl0 >= 370 && arl1 <= 5) {
     return '✅ Excelente rendimiento: Bajas falsas alarmas (1 cada ~370 subgrupos) y detección rápida (promedio ~5 subgrupos para detectar cambio de 1σ)';
@@ -246,7 +246,7 @@ export function getPerformanceRecommendation(
 export function calculateAllAdvancedMetrics(
   n: number,
   samplingTimeHours: number,
-  currentProcessSigma?: number
+  //currentProcessSigma?: number
 ): {
   arl0: number;
   arl1_for_delta_1: number;
@@ -273,7 +273,7 @@ export function calculateAllAdvancedMetrics(
   const ats1_for_delta_1 = arl1_for_delta_1 * samplingTimeHours;
   const sampleLoad = n / samplingTimeHours;
   
-  const recommendations = getPerformanceRecommendation(arl0, arl1_for_delta_1, ats0, ats1_for_delta_1);
+  const recommendations = getPerformanceRecommendation(arl0, arl1_for_delta_1);
   
   return {
     arl0,

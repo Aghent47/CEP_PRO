@@ -280,9 +280,9 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   };
 
   const exportToTXT = () => {
-    const sigmaValue = chartData?.r?.centerLine 
-      ? (chartData.r.centerLine / chartData.constants.d2).toFixed(4)
-      : (chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4);
+    // const sigmaValue = chartData?.r?.centerLine 
+    //   ? (chartData.r.centerLine / chartData.constants.d2).toFixed(4)
+    //   : (chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4);
     
     const content = `============================================================
         REPORTE EJECUTIVO DE CAPACIDAD
