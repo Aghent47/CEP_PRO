@@ -182,7 +182,8 @@ interface ExecutiveReportProps {
   rViolations: any[];
   removedSubgroups: number[];
   originalSubgroupsCount: number;
-  chartType: 'X-R' | 'X-s';  // AÑADIDO
+  chartType: 'X-R' | 'X-s' | 'Attributes';
+  currentPhase: 'I' | 'II';
 }
 
 const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
@@ -196,7 +197,8 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   rViolations,
   removedSubgroups,
   originalSubgroupsCount,
-  chartType  // AÑADIDO
+  chartType,
+  currentPhase
 }) => {
   const getClassification = () => {
     const cpk = capabilityIndices.cpk;
@@ -209,6 +211,12 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   };
 
   const getStabilityStatus = () => {
+    // En Fase II, el proceso ya debería estar estable después de la limpieza
+    if (currentPhase === 'II') {
+      return { text: 'ESTABLE', color: '#10b981', emoji: '✅' };
+    }
+    
+    // En Fase I, evaluar según las violaciones
     const totalViolations = xbarViolations.length + rViolations.length;
     if (totalViolations === 0 && removedSubgroups.length === 0) {
       return { text: 'ESTABLE', color: '#10b981', emoji: '✅' };
@@ -220,7 +228,10 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
     if (chartType === 'X-R') {
       return 'X-R (Medias y Rangos)';
     }
-    return 'X-s (Medias y Desviación Estándar)';
+    if (chartType === 'X-s') {
+      return 'X-s (Medias y Desviación Estándar)';
+    }
+    return 'Atributos (p, np, c, u)';
   };
 
   const classification = getClassification();
@@ -280,10 +291,6 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   };
 
   const exportToTXT = () => {
-    // const sigmaValue = chartData?.r?.centerLine 
-    //   ? (chartData.r.centerLine / chartData.constants.d2).toFixed(4)
-    //   : (chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4);
-    
     const content = `============================================================
         REPORTE EJECUTIVO DE CAPACIDAD
 ============================================================
@@ -361,7 +368,7 @@ CLASIFICACIÓN FINAL: ${classification.grade} - ${classification.text}
           </div>
           <div className="info-row">
             <span className="label">Tipo de gráfico:</span>
-            <span className="value">{getChartTypeName()} (n={chartData?.constants?.n || chartData?.constants?.n || '?'}, k={chartData?.subgroups.length || 0})</span>
+            <span className="value">{getChartTypeName()} (n=${chartData?.constants?.n || chartData?.constants?.n || '?'}, k=${chartData?.subgroups.length || 0})</span>
           </div>
           <div className="info-row">
             <span className="label">Unidad de medida:</span>
