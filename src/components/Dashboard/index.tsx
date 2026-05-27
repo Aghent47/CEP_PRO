@@ -720,22 +720,7 @@ const Dashboard: React.FC = () => {
         />
       )}
 
-      {phase === 'II' && currentChartData && (
-  <ExecutiveReport
-    fileName={fileName || 'Sin nombre'}
-    chartData={currentChartData}
-    capabilityIndices={capabilityIndices}
-    unit={unit}
-    lie={lie}
-    lse={lse}
-    xbarViolations={xbarViolations}
-    rViolations={rViolations}
-    removedSubgroups={removedSubgroups}
-    originalSubgroupsCount={data?.numericData.length || 0}
-    chartType={chartType as 'X-R' | 'X-s'}
-    currentPhase={phase}  // ← Esta línea es clave
-  />
-)}
+      
 
       {phase === 'II' && currentChartData && (
         <AdvancedMetrics 
@@ -848,6 +833,22 @@ const Dashboard: React.FC = () => {
               title="Distribución del Proceso vs Especificaciones"
             />
           )}
+          {phase === 'II' && currentChartData && (
+    <ExecutiveReport
+    fileName={fileName || 'Sin nombre'}
+    chartData={currentChartData}
+    capabilityIndices={capabilityIndices}
+    unit={unit}
+    lie={lie}
+    lse={lse}
+    xbarViolations={xbarViolations}
+    rViolations={rViolations}
+    removedSubgroups={removedSubgroups}
+    originalSubgroupsCount={data?.numericData.length || 0}
+    chartType={chartType as 'X-R' | 'X-s'}
+    currentPhase={phase}  // ← Esta línea es clave
+  />
+)}
         </>
       )}
     </DashboardContainer>
