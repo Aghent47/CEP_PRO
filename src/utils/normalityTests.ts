@@ -1,28 +1,12 @@
 /**
- * Pruebas de Normalidad según documento de correcciones (Punto 6)
+ * Pruebas de Normalidad - Simplificada (Solo Shapiro-Wilk)
  * 
- * CRITERIOS ESTADÍSTICOS SEGÚN DOCUMENTO:
+ * CRITERIO ESTADÍSTICO SEGÚN DOCUMENTO:
  * 
- * 1. Gráfico Q-Q (Validación Visual):
- *    - Los puntos deben seguir la línea diagonal roja
- *    - Si se separan formando "S" o "C" → no normal
- * 
- * 2. Prueba de Shapiro-Wilk (Validación Analítica):
+ * Prueba de Shapiro-Wilk (Validación Analítica Principal):
  *    - p-value > 0.05 → ACEPTA normalidad (H0)
  *    - p-value ≤ 0.05 → RECHAZA normalidad (datos no normales)
  *    - El límite SIEMPRE es 0.05, sin importar el tamaño de muestra
- * 
- * 3. Skewness (Asimetría) - Métrica de Forma Lateral:
- *    - Rango aceptable: -0.5 a 0.5 (estricto para control de calidad)
- *    - Si > 0.5 → sesgo positivo (cola derecha larga)
- *    - Si < -0.5 → sesgo negativo (cola izquierda larga)
- *    - En distribución normal perfecta: skewness = 0
- * 
- * 4. Kurtosis (Curtosis) - Métrica de Forma Vertical/Colas:
- *    - Curtosis teórica normal = 3
- *    - Rango aceptable para curtosis: 2.5 a 3.5
- *    - Si > 3.5 → Leptocúrtica (muy puntiaguda, colas pesadas)
- *    - Si < 2.5 → Platicúrtica (muy plana, colas livianas)
  */
 
 export interface NormalityResult {
@@ -33,50 +17,20 @@ export interface NormalityResult {
     interpretation: string;
     verdict: 'ACEPTA_NORMALIDAD' | 'RECHAZA_NORMALIDAD';
   };
-  skewness: {
-    value: number;
-    interpretation: string;
-    verdict: 'NORMAL' | 'SESGO_POSITIVO' | 'SESGO_NEGATIVO';
-  };
-  kurtosis: {
-    value: number;
-    interpretation: string;
-    verdict: 'NORMAL' | 'LEPTOCURTICA' | 'PLATICURTICA';
-  };
   qqData: { theoretical: number[]; sample: number[] };
   qqInterpretation: string;
   recommendations: string[];
 }
 
 /**
- * Calcula la asimetría (skewness)
- * Fórmula: skewness = E[(X - μ)/σ]³
+ * Función de distribución acumulada normal estándar
  */
-export function calculateSkewness(data: number[]): number {
-  const n = data.length;
-  const mean = data.reduce((a, b) => a + b, 0) / n;
-  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n;
-  const stdDev = Math.sqrt(variance);
+function normalCDF(z: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(z));
+  const d = 0.3989423 * Math.exp(-z * z / 2);
+  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
   
-  if (stdDev === 0) return 0;
-  const skewness = data.reduce((acc, val) => acc + Math.pow((val - mean) / stdDev, 3), 0) / n;
-  return skewness;
-}
-
-/**
- * Calcula la curtosis (kurtosis)
- * Fórmula: kurtosis = E[(X - μ)/σ]⁴
- * Nota: Curtosis teórica normal = 3
- */
-export function calculateKurtosis(data: number[]): number {
-  const n = data.length;
-  const mean = data.reduce((a, b) => a + b, 0) / n;
-  const variance = data.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / n;
-  const stdDev = Math.sqrt(variance);
-  
-  if (stdDev === 0) return 3;
-  const kurtosis = data.reduce((acc, val) => acc + Math.pow((val - mean) / stdDev, 4), 0) / n;
-  return kurtosis;
+  return z > 0 ? 1 - p : p;
 }
 
 /**
@@ -185,17 +139,6 @@ export function calculateShapiroWilk(data: number[]): { statistic: number; pValu
 }
 
 /**
- * Función de distribución acumulada normal estándar
- */
-function normalCDF(z: number): number {
-  const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const d = 0.3989423 * Math.exp(-z * z / 2);
-  const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
-  
-  return z > 0 ? 1 - p : p;
-}
-
-/**
  * Generar datos para gráfico Q-Q
  */
 export function generateQQData(data: number[]): { theoretical: number[]; sample: number[] } {
@@ -217,58 +160,6 @@ export function generateQQData(data: number[]): { theoretical: number[]; sample:
   }
   
   return { theoretical, sample };
-}
-
-/**
- * Interpretar Skewness según criterios del documento
- * Rango aceptable: -0.5 a 0.5
- */
-function interpretSkewness(skewness: number): {
-  interpretation: string;
-  verdict: 'NORMAL' | 'SESGO_POSITIVO' | 'SESGO_NEGATIVO';
-} {
-  if (Math.abs(skewness) <= 0.5) {
-    return {
-      interpretation: `✓ Simétrica (${skewness.toFixed(4)} está dentro del rango aceptable -0.5 a 0.5)`,
-      verdict: 'NORMAL'
-    };
-  }
-  if (skewness > 0.5) {
-    return {
-      interpretation: `⚠️ Sesgo positivo (${skewness.toFixed(4)} > 0.5). La cola se extiende hacia la derecha.`,
-      verdict: 'SESGO_POSITIVO'
-    };
-  }
-  return {
-    interpretation: `⚠️ Sesgo negativo (${skewness.toFixed(4)} < -0.5). La cola se extiende hacia la izquierda.`,
-    verdict: 'SESGO_NEGATIVO'
-  };
-}
-
-/**
- * Interpretar Kurtosis según criterios del documento
- * Rango aceptable: 2.5 a 3.5 (curtosis normal = 3)
- */
-function interpretKurtosis(kurtosis: number): {
-  interpretation: string;
-  verdict: 'NORMAL' | 'LEPTOCURTICA' | 'PLATICURTICA';
-} {
-  if (kurtosis >= 2.5 && kurtosis <= 3.5) {
-    return {
-      interpretation: `✓ Mesocúrtica (${kurtosis.toFixed(4)} está dentro del rango aceptable 2.5 a 3.5)`,
-      verdict: 'NORMAL'
-    };
-  }
-  if (kurtosis > 3.5) {
-    return {
-      interpretation: `⚠️ Leptocúrtica (${kurtosis.toFixed(4)} > 3.5). Curva muy "puntiaguda" y colas pesadas.`,
-      verdict: 'LEPTOCURTICA'
-    };
-  }
-  return {
-    interpretation: `⚠️ Platicúrtica (${kurtosis.toFixed(4)} < 2.5). Curva muy "plana" y colas livianas.`,
-    verdict: 'PLATICURTICA'
-  };
 }
 
 /**
@@ -325,38 +216,19 @@ function interpretQQ(theoretical: number[], sample: number[]): string {
 }
 
 /**
- * Obtener recomendaciones según resultados combinados
+ * Obtener recomendaciones según resultado de Shapiro-Wilk
  */
-function getRecommendations(
-  shapiroVerdict: 'ACEPTA_NORMALIDAD' | 'RECHAZA_NORMALIDAD',
-  skewnessVerdict: 'NORMAL' | 'SESGO_POSITIVO' | 'SESGO_NEGATIVO',
-  kurtosisVerdict: 'NORMAL' | 'LEPTOCURTICA' | 'PLATICURTICA'
-): string[] {
+function getRecommendations(isNormal: boolean): string[] {
   const recommendations: string[] = [];
   
-  const allNormal = shapiroVerdict === 'ACEPTA_NORMALIDAD' && 
-                     skewnessVerdict === 'NORMAL' && 
-                     kurtosisVerdict === 'NORMAL';
-  
-  if (allNormal) {
+  if (isNormal) {
     recommendations.push("✅ Los datos siguen una distribución normal. Puede proceder con el análisis de capacidad estándar (Cp, Cpk).");
   } else {
-    recommendations.push("⚠️ Los datos NO siguen una distribución normal según uno o más criterios.");
+    recommendations.push("⚠️ Los datos NO siguen una distribución normal según la prueba de Shapiro-Wilk.");
     recommendations.push("📊 Se recomienda una de las siguientes opciones:");
-    
-    if (skewnessVerdict !== 'NORMAL') {
-      if (skewnessVerdict === 'SESGO_POSITIVO') {
-        recommendations.push("   📌 Transformación Logarítmica (λ=0) para corregir sesgo positivo");
-        recommendations.push("   📌 Transformación Raíz Cuadrada (λ=0.5)");
-      } else {
-        recommendations.push("   📌 Transformación 1/x o x² para corregir sesgo negativo");
-      }
-    }
-    
-    if (kurtosisVerdict !== 'NORMAL') {
-      recommendations.push("   📌 Transformación Box-Cox para ajustar la curtosis");
-    }
-    
+    recommendations.push("   📌 Transformación Logarítmica (λ=0) para corregir sesgo positivo");
+    recommendations.push("   📌 Transformación Raíz Cuadrada (λ=0.5)");
+    recommendations.push("   📌 Transformación Box-Cox");
     recommendations.push("   📌 Usar límites empíricos basados en percentiles");
     recommendations.push("   📌 Continuar con análisis estándar (reconociendo la imprecisión)");
   }
@@ -365,8 +237,8 @@ function getRecommendations(
 }
 
 /**
- * Prueba completa de normalidad
- * Integra todos los criterios del documento
+ * Prueba completa de normalidad (SOLO Shapiro-Wilk)
+ * La decisión final se basa ÚNICAMENTE en el p-value de Shapiro-Wilk
  */
 export function testNormality(data: number[]): NormalityResult {
   // Validación de muestra mínima
@@ -379,44 +251,24 @@ export function testNormality(data: number[]): NormalityResult {
         interpretation: "Muestra demasiado pequeña (n < 5)",
         verdict: 'RECHAZA_NORMALIDAD'
       },
-      skewness: { 
-        value: 0, 
-        interpretation: "No calculable con muestra pequeña",
-        verdict: 'NORMAL'
-      },
-      kurtosis: { 
-        value: 0, 
-        interpretation: "No calculable con muestra pequeña",
-        verdict: 'NORMAL'
-      },
       qqData: { theoretical: [], sample: [] },
       qqInterpretation: "No se puede generar Q-Q plot con muestra pequeña",
       recommendations: ["⚠️ Se necesitan al menos 5 datos para evaluar normalidad."]
     };
   }
   
-  // Calcular todas las métricas
-  const skewness = calculateSkewness(data);
-  const kurtosis = calculateKurtosis(data);
+  // Calcular Shapiro-Wilk
   const shapiro = calculateShapiroWilk(data);
   const qqData = generateQQData(data);
   
-  // Interpretar cada prueba
-  const skewnessResult = interpretSkewness(skewness);
-  const kurtosisResult = interpretKurtosis(kurtosis);
+  // Interpretar resultados
   const shapiroResult = interpretShapiroWilk(shapiro.pValue);
   const qqInterpretation = interpretQQ(qqData.theoretical, qqData.sample);
   
-  // Decisión final de normalidad (todos los criterios deben cumplirse)
-  const isNormal = shapiroResult.verdict === 'ACEPTA_NORMALIDAD' &&
-                   skewnessResult.verdict === 'NORMAL' &&
-                   kurtosisResult.verdict === 'NORMAL';
+  // Decisión final de normalidad (SOLO basada en Shapiro-Wilk)
+  const isNormal = shapiroResult.verdict === 'ACEPTA_NORMALIDAD';
   
-  const recommendations = getRecommendations(
-    shapiroResult.verdict,
-    skewnessResult.verdict,
-    kurtosisResult.verdict
-  );
+  const recommendations = getRecommendations(isNormal);
   
   return {
     isNormal,
@@ -425,16 +277,6 @@ export function testNormality(data: number[]): NormalityResult {
       pValue: shapiro.pValue,
       interpretation: shapiroResult.interpretation,
       verdict: shapiroResult.verdict
-    },
-    skewness: {
-      value: skewness,
-      interpretation: skewnessResult.interpretation,
-      verdict: skewnessResult.verdict
-    },
-    kurtosis: {
-      value: kurtosis,
-      interpretation: kurtosisResult.interpretation,
-      verdict: kurtosisResult.verdict
     },
     qqData,
     qqInterpretation,

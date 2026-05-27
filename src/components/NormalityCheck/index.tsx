@@ -50,16 +50,11 @@ const MetricsGrid = styled.div`
   margin-bottom: 1rem;
 `;
 
-const MetricCard = styled.div<{ verdict?: 'normal' | 'warning' | 'error' }>`
+const MetricCard = styled.div<{ isNormal: boolean }>`
   background: var(--bg-secondary);
   border-radius: 12px;
   padding: 1rem;
-  border-left: 4px solid ${props => {
-    if (props.verdict === 'normal') return '#10b981';
-    if (props.verdict === 'warning') return '#f59e0b';
-    if (props.verdict === 'error') return '#ef4444';
-    return 'var(--border-color)';
-  }};
+  border-left: 4px solid ${props => props.isNormal ? '#10b981' : '#ef4444'};
   
   .label {
     font-size: 0.7rem;
@@ -74,8 +69,8 @@ const MetricCard = styled.div<{ verdict?: 'normal' | 'warning' | 'error' }>`
     font-family: monospace;
   }
   .interpretation {
-    font-size: 0.7rem;
-    color: var(--text-secondary);
+    font-size: 0.75rem;
+    color: ${props => props.isNormal ? '#10b981' : '#ef4444'};
     margin-top: 0.5rem;
     line-height: 1.4;
   }
@@ -234,16 +229,9 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
     );
   }
 
-  // Determinar el color de cada métrica
-  const getVerdictStyle = (verdict: string): 'normal' | 'warning' | 'error' => {
-    if (verdict.includes('ACEPTA') || verdict === 'NORMAL') return 'normal';
-    if (verdict.includes('RECHAZA') || verdict === 'SESGO_POSITIVO' || verdict === 'SESGO_NEGATIVO') return 'error';
-    return 'warning';
-  };
-
   return (
     <Container>
-      <Title>📊 Verificación de Normalidad</Title>
+      <Title>📊 Verificación de Normalidad (Shapiro-Wilk)</Title>
       
       <ResultBox isNormal={result.isNormal}>
         <div className="status">
@@ -251,40 +239,19 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
         </div>
         <div className="message">
           {result.isNormal 
-            ? 'Los datos cumplen con los criterios de normalidad (Shapiro-Wilk p>0.05, Skewness en [-0.5,0.5], Kurtosis en [2.5,3.5])'
-            : 'Los datos NO cumplen con uno o más criterios de normalidad. Se recomienda aplicar una transformación.'}
+            ? 'La prueba de Shapiro-Wilk indica que los datos siguen una distribución normal.'
+            : 'La prueba de Shapiro-Wilk indica que los datos NO siguen una distribución normal.'}
         </div>
       </ResultBox>
       
       <MetricsGrid>
-        {/* Shapiro-Wilk */}
-        <MetricCard verdict={getVerdictStyle(result.shapiroWilk.verdict)}>
+        <MetricCard isNormal={result.isNormal}>
           <div className="label">📊 Shapiro-Wilk</div>
           <div className="value">W = {result.shapiroWilk.statistic.toFixed(4)}</div>
           <div className="value">p-valor = {result.shapiroWilk.pValue.toFixed(4)}</div>
           <div className="interpretation">{result.shapiroWilk.interpretation}</div>
           <div className="criterion">
             <strong>Criterio:</strong> p-valor &gt; 0.05 → Acepta normalidad
-          </div>
-        </MetricCard>
-        
-        {/* Skewness (Asimetría) */}
-        <MetricCard verdict={result.skewness.verdict === 'NORMAL' ? 'normal' : 'error'}>
-          <div className="label">📐 Skewness (Asimetría)</div>
-          <div className="value">{result.skewness.value.toFixed(4)}</div>
-          <div className="interpretation">{result.skewness.interpretation}</div>
-          <div className="criterion">
-            <strong>Criterio:</strong> Rango aceptable: -0.5 a 0.5
-          </div>
-        </MetricCard>
-        
-        {/* Kurtosis (Curtosis) */}
-        <MetricCard verdict={result.kurtosis.verdict === 'NORMAL' ? 'normal' : 'error'}>
-          <div className="label">📊 Kurtosis (Curtosis)</div>
-          <div className="value">{result.kurtosis.value.toFixed(4)}</div>
-          <div className="interpretation">{result.kurtosis.interpretation}</div>
-          <div className="criterion">
-            <strong>Criterio:</strong> Rango aceptable: 2.5 a 3.5 (Normal = 3)
           </div>
         </MetricCard>
       </MetricsGrid>
@@ -299,16 +266,6 @@ const NormalityCheck: React.FC<NormalityCheckProps> = ({ data, onProceed, onTran
             ✅ Si los puntos siguen la línea roja diagonal → Datos normales<br/>
             ❌ Si se separan formando "S" o "C" → Datos NO normales
           </div>
-        </div>
-      </ExplanationBox>
-      
-      <ExplanationBox>
-        <div className="title">📋 Resumen de Criterios de Normalidad</div>
-        <div className="content">
-          <strong>Shapiro-Wilk:</strong> p-valor &gt; 0.05 → {result.shapiroWilk.pValue > 0.05 ? '✅ Cumple' : '❌ No cumple'}<br/>
-          <strong>Skewness:</strong> |valor| ≤ 0.5 → {Math.abs(result.skewness.value) <= 0.5 ? '✅ Cumple' : '❌ No cumple'} ({result.skewness.value.toFixed(4)})<br/>
-          <strong>Kurtosis:</strong> 2.5 ≤ valor ≤ 3.5 → {result.kurtosis.value >= 2.5 && result.kurtosis.value <= 3.5 ? '✅ Cumple' : '❌ No cumple'} ({result.kurtosis.value.toFixed(4)})<br/>
-          <strong>Gráfico Q-Q:</strong> Puntos alineados → {result.qqInterpretation.includes('✓') ? '✅ Visualmente normal' : '⚠️ Visualmente no normal'}
         </div>
       </ExplanationBox>
       
