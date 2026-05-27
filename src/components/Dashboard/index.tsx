@@ -572,8 +572,8 @@ const Dashboard: React.FC = () => {
               setRemovedSubgroups([]);
             }
           }}>
-            <option value="I">Fase I - Estabilización (Limpieza de datos)</option>
-            <option value="II">Fase II - Monitoreo y Capacidad</option>
+            <option value="I">Fase I - Estabilización</option>
+            <option value="II">Fase II - Capacidad y Monitoreo</option>
           </select>
         </ConfigGroup>
         <ConfigGroup>
