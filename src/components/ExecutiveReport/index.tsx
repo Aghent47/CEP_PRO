@@ -1,7 +1,5 @@
 import React from 'react';
 import styled from 'styled-components';
-import html2canvas from 'html2canvas';
-import jsPDF from 'jspdf';
 
 const ReportContainer = styled.div`
   background: var(--bg-card);
@@ -196,7 +194,6 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   xbarViolations,
   rViolations,
   removedSubgroups,
-  originalSubgroupsCount,
   chartType,
   currentPhase
 }) => {
@@ -237,58 +234,58 @@ const ExecutiveReport: React.FC<ExecutiveReportProps> = ({
   const classification = getClassification();
   const stability = getStabilityStatus();
 
-  const exportToPDF = async () => {
-    const reportElement = document.getElementById('report-content');
-    if (!reportElement) return;
+  // const exportToPDF = async () => {
+  //   const reportElement = document.getElementById('report-content');
+  //   if (!reportElement) return;
     
-    const canvas = await html2canvas(reportElement, {
-      scale: 2,
-      backgroundColor: '#0a0e1a',
-      logging: false
-    });
+  //   const canvas = await html2canvas(reportElement, {
+  //     scale: 2,
+  //     backgroundColor: '#0a0e1a',
+  //     logging: false
+  //   });
     
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({
-      orientation: 'portrait',
-      unit: 'mm',
-      format: 'a4'
-    });
+  //   const imgData = canvas.toDataURL('image/png');
+  //   const pdf = new jsPDF({
+  //     orientation: 'portrait',
+  //     unit: 'mm',
+  //     format: 'a4'
+  //   });
     
-    const imgWidth = 210;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  //   const imgWidth = 210;
+  //   const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
-    pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-    pdf.save(`reporte_capacidad_${new Date().toISOString().split('T')[0]}.pdf`);
-  };
+  //   pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
+  //   pdf.save(`reporte_capacidad_${new Date().toISOString().split('T')[0]}.pdf`);
+  // };
 
-  const exportToCSV = () => {
-    const headers = ['Indicador', 'Valor', 'Unidad', 'Interpretación'];
-    const rows = [
-      ['Gran Media (X̄̄)', chartData?.xbar.centerLine.toFixed(4) || '—', unit, 'Media del proceso'],
-      ['Sigma del Proceso', (chartData?.r?.centerLine / chartData?.constants?.d2 || chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4), unit, 'Desviación estándar'],
-      ['Cp', capabilityIndices.cp?.toFixed(4) || '—', '', 'Capacidad potencial'],
-      ['Cpk', capabilityIndices.cpk?.toFixed(4) || '—', '', 'Capacidad real'],
-      ['Cpl', capabilityIndices.cpl?.toFixed(4) || '—', '', 'Capacidad límite inferior'],
-      ['Cpu', capabilityIndices.cpu?.toFixed(4) || '—', '', 'Capacidad límite superior'],
-      ['Índice K', capabilityIndices.k?.toFixed(1) || '—', '%', 'Descentramiento'],
-      ['Nivel Sigma', capabilityIndices.sigmaLevel?.toFixed(2) || '—', 'σ', 'Z bench'],
-      ['PPM', capabilityIndices.ppm ? Math.round(capabilityIndices.ppm).toLocaleString() : '—', '', 'Partes por millón fuera de especificación'],
-      ['Subgrupos totales', originalSubgroupsCount.toString(), '', ''],
-      ['Subgrupos activos', chartData?.subgroups.length.toString() || '0', '', 'Después de limpieza'],
-      ['Estado del proceso', stability.text, '', stability.text === 'ESTABLE' ? 'Bajo control' : 'Fuera de control']
-    ];
+  // const exportToCSV = () => {
+  //   const headers = ['Indicador', 'Valor', 'Unidad', 'Interpretación'];
+  //   const rows = [
+  //     ['Gran Media (X̄̄)', chartData?.xbar.centerLine.toFixed(4) || '—', unit, 'Media del proceso'],
+  //     ['Sigma del Proceso', (chartData?.r?.centerLine / chartData?.constants?.d2 || chartData?.s?.centerLine / chartData?.constants?.c4 || 0).toFixed(4), unit, 'Desviación estándar'],
+  //     ['Cp', capabilityIndices.cp?.toFixed(4) || '—', '', 'Capacidad potencial'],
+  //     ['Cpk', capabilityIndices.cpk?.toFixed(4) || '—', '', 'Capacidad real'],
+  //     ['Cpl', capabilityIndices.cpl?.toFixed(4) || '—', '', 'Capacidad límite inferior'],
+  //     ['Cpu', capabilityIndices.cpu?.toFixed(4) || '—', '', 'Capacidad límite superior'],
+  //     ['Índice K', capabilityIndices.k?.toFixed(1) || '—', '%', 'Descentramiento'],
+  //     ['Nivel Sigma', capabilityIndices.sigmaLevel?.toFixed(2) || '—', 'σ', 'Z bench'],
+  //     ['PPM', capabilityIndices.ppm ? Math.round(capabilityIndices.ppm).toLocaleString() : '—', '', 'Partes por millón fuera de especificación'],
+  //     ['Subgrupos totales', originalSubgroupsCount.toString(), '', ''],
+  //     ['Subgrupos activos', chartData?.subgroups.length.toString() || '0', '', 'Después de limpieza'],
+  //     ['Estado del proceso', stability.text, '', stability.text === 'ESTABLE' ? 'Bajo control' : 'Fuera de control']
+  //   ];
     
-    const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.href = url;
-    link.setAttribute('download', `reporte_capacidad_${new Date().toISOString().split('T')[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
+  //   const csvContent = [headers, ...rows].map(row => row.join(',')).join('\n');
+  //   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  //   const link = document.createElement('a');
+  //   const url = URL.createObjectURL(blob);
+  //   link.href = url;
+  //   link.setAttribute('download', `reporte_capacidad_${new Date().toISOString().split('T')[0]}.csv`);
+  //   document.body.appendChild(link);
+  //   link.click();
+  //   document.body.removeChild(link);
+  //   URL.revokeObjectURL(url);
+  // };
 
   const exportToTXT = () => {
     const content = `============================================================

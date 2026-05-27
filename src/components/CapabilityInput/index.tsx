@@ -73,16 +73,6 @@ const Button = styled.button`
   }
 `;
 
-const WarningMessage = styled.div`
-  background: rgba(245, 158, 11, 0.1);
-  border-left: 3px solid #f59e0b;
-  padding: 0.75rem;
-  border-radius: 8px;
-  margin-top: 1rem;
-  font-size: 0.75rem;
-  color: #fcd34d;
-`;
-
 interface CapabilityInputProps {
   onSpecsChange: (lie: number | null, lse: number | null) => void;
   unit: string;
