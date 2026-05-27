@@ -80,10 +80,10 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstance = useRef<echarts.ECharts | null>(null);
 
-  if (data.length === 0 || sigma === 0 || !sigma || sigma < 0.0001) return null;
+  if (data.length === 0 || !sigma || sigma <= 0) return null;
 
   // ============ 1. CALCULAR HISTOGRAMA ============
-  const numBins = Math.min(20, Math.max(5, Math.ceil(Math.sqrt(data.length))));
+  const numBins = Math.min(20, Math.max(8, Math.ceil(Math.sqrt(data.length))));
   const minData = Math.min(...data);
   const maxData = Math.max(...data);
   const binWidth = (maxData - minData) / numBins;
@@ -101,27 +101,37 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
   }
   
   const maxFrequency = Math.max(...frequencies);
+  const totalDataPoints = data.length;
   
-  // ============ 2. GENERAR CURVA NORMAL CON ESCALADO FORZADO ============
-  const curveStart = mean - 3.5 * sigma;
-  const curveEnd = mean + 3.5 * sigma;
+  // ============ 2. GENERAR CURVA NORMAL (CAMPANA DE GAUSS) ============
+  // Extender el rango para mostrar toda la campana
+  const curveStart = mean - 4 * sigma;
+  const curveEnd = mean + 4 * sigma;
   const curveStep = (curveEnd - curveStart) / 300;
   
   const curveX: number[] = [];
-  const curveYRaw: number[] = []; // Densidad real (valores entre 0 y ~2.5)
+  const curveYDensity: number[] = []; // Densidad de probabilidad real
   
+  // Función de densidad normal
+  const normalPDF = (x: number, mu: number, sig: number): number => {
+    if (sig <= 0) return 0;
+    const exponent = -Math.pow(x - mu, 2) / (2 * Math.pow(sig, 2));
+    return (1 / (sig * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
+  };
+  
+  // Generar puntos de la curva
   for (let x = curveStart; x <= curveEnd; x += curveStep) {
     curveX.push(x);
-    const exponent = -Math.pow(x - mean, 2) / (2 * Math.pow(sigma, 2));
-    const density = (1 / (sigma * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
-    curveYRaw.push(density);
+    curveYDensity.push(normalPDF(x, mean, sigma));
   }
   
-  const maxDensity = Math.max(...curveYRaw);
+  const maxDensity = Math.max(...curveYDensity);
   
-  // ESCALADO FORZADO: La curva ocupará el 70% de la altura máxima del gráfico
-  const forcedScaleFactor = (maxFrequency * 0.7) / maxDensity;
-  const curveY = curveYRaw.map(y => y * forcedScaleFactor);
+  // ESCALADO: La curva debe ser visible
+  // Escalamos la densidad para que coincida visualmente con el histograma
+  // La altura máxima de la curva escalada será el 70% de la barra más alta
+  const scaleFactor = (maxFrequency * 0.7) / maxDensity;
+  const curveYScaled = curveYDensity.map(y => y * scaleFactor);
   
   // ============ 3. DETERMINAR LÍMITES DEL GRÁFICO ============
   let xAxisMin = Math.min(curveStart, minData - binWidth);
@@ -130,17 +140,7 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
   if (lie !== null && lie < xAxisMin) xAxisMin = lie - sigma;
   if (lse !== null && lse > xAxisMax) xAxisMax = lse + sigma;
   
-  const yAxisMax = Math.max(maxFrequency, Math.max(...curveY)) * 1.1;
-
-  // ============ DIAGNÓSTICO EN CONSOLA ============
-  console.log('=== PROCESO HISTOGRAMA ===');
-  console.log('Media:', mean);
-  console.log('Sigma:', sigma);
-  console.log('maxFrequency:', maxFrequency);
-  console.log('maxDensity:', maxDensity);
-  console.log('forcedScaleFactor:', forcedScaleFactor);
-  console.log('curveY primeros 5:', curveY.slice(0, 5));
-  console.log('=========================');
+  const yAxisMax = Math.max(maxFrequency, Math.max(...curveYScaled)) * 1.15;
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -150,6 +150,174 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
     }
 
     chartInstance.current = echarts.init(chartRef.current);
+
+    // Construir series
+    const series: any[] = [
+      {
+        name: 'Histograma',
+        type: 'bar',
+        data: frequencies,
+        barWidth: '85%',
+        itemStyle: {
+          color: '#3b82f6',
+          borderRadius: [4, 4, 0, 0],
+          opacity: 0.7
+        },
+        label: { show: false },
+        tooltip: {
+          formatter: (params: any) => {
+            const binCenter = bins[params.dataIndex];
+            const percentage = ((params.value / totalDataPoints) * 100).toFixed(1);
+            return `<strong>📊 Histograma</strong><br/>Centro: ${binCenter.toFixed(3)} ${unit}<br/>Frecuencia: ${params.value} (${percentage}%)`;
+          }
+        }
+      },
+      {
+        name: 'Curva Normal (Campana de Gauss)',
+        type: 'line',
+        data: curveYScaled,
+        smooth: true,
+        lineStyle: {
+          color: '#ef4444',
+          width: 3,
+          type: 'solid'
+        },
+        symbol: 'none',
+        areaStyle: {
+          color: 'rgba(239, 68, 68, 0.15)'
+        },
+        tooltip: {
+          formatter: (params: any) => {
+            const xValue = curveX[params.dataIndex];
+            const densityValue = curveYDensity[params.dataIndex];
+            return `<strong>📈 Curva Normal</strong><br/>Valor: ${xValue.toFixed(3)} ${unit}<br/>Densidad: ${densityValue.toFixed(6)}`;
+          }
+        }
+      },
+      {
+        name: 'Media del Proceso',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: mean }],
+          lineStyle: {
+            color: '#10b981',
+            width: 2.5,
+            type: 'solid'
+          },
+          label: {
+            formatter: `Media: ${mean.toFixed(3)} ${unit}`,
+            color: '#10b981',
+            position: 'middle',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
+        }
+      }
+    ];
+
+    // Añadir LIE si existe
+    if (lie !== null) {
+      series.push({
+        name: 'LIE',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: lie }],
+          lineStyle: {
+            color: '#f59e0b',
+            width: 2.5,
+            type: 'dashed'
+          },
+          label: {
+            formatter: `LIE: ${lie} ${unit}`,
+            color: '#f59e0b',
+            position: 'start',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
+        }
+      });
+    }
+
+    // Añadir LSE si existe
+    if (lse !== null) {
+      series.push({
+        name: 'LSE',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: lse }],
+          lineStyle: {
+            color: '#f59e0b',
+            width: 2.5,
+            type: 'dashed'
+          },
+          label: {
+            formatter: `LSE: ${lse} ${unit}`,
+            color: '#f59e0b',
+            position: 'end',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
+        }
+      });
+    }
+
+    // Añadir objetivo si existe
+    if (target !== null && target !== undefined) {
+      series.push({
+        name: 'Nominal',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: target }],
+          lineStyle: {
+            color: '#8b5cf6',
+            width: 2,
+            type: 'dotted'
+          },
+          label: {
+            formatter: `Nominal: ${target} ${unit}`,
+            color: '#8b5cf6',
+            position: 'middle'
+          },
+          symbol: 'none'
+        }
+      });
+    }
+
+    // Áreas sombreadas fuera de especificación
+    if (lie !== null) {
+      series.push({
+        name: 'Zona No Conforme',
+        type: 'line',
+        data: [],
+        markArea: {
+          data: [[{ xAxis: xAxisMin }, { xAxis: lie }]],
+          itemStyle: { color: 'rgba(239, 68, 68, 0.25)' },
+          label: { show: false }
+        }
+      });
+    }
+
+    if (lse !== null) {
+      series.push({
+        name: 'Zona No Conforme',
+        type: 'line',
+        data: [],
+        markArea: {
+          data: [[{ xAxis: lse }, { xAxis: xAxisMax }]],
+          itemStyle: { color: 'rgba(239, 68, 68, 0.25)' },
+          label: { show: false }
+        }
+      });
+    }
+
+    const legendData = ['Histograma', 'Curva Normal (Campana de Gauss)', 'Media del Proceso'];
+    if (lie !== null) legendData.push('LIE');
+    if (lse !== null) legendData.push('LSE');
+    if (target !== null && target !== undefined) legendData.push('Nominal');
 
     const option: EChartsOption = {
       backgroundColor: 'transparent',
@@ -177,7 +345,7 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
         axisLabel: {
           color: '#8f9bb3',
           fontSize: 11,
-          formatter: (value: number) => value.toFixed(3)
+          formatter: (value: number) => value.toFixed(2)
         },
         axisLine: { lineStyle: { color: '#2a3448' } },
         splitLine: { show: false }
@@ -191,194 +359,27 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
         axisLine: { lineStyle: { color: '#2a3448' } },
         splitLine: { lineStyle: { color: '#1a2235', type: 'dashed' } }
       },
-      series: [
-        {
-          name: 'Histograma',
-          type: 'bar',
-          data: frequencies,
-          barWidth: '85%',
-          itemStyle: {
-            color: '#3b82f6',
-            borderRadius: [4, 4, 0, 0],
-            opacity: 0.6
-          },
-          label: { show: false },
-          tooltip: {
-            formatter: (params: any) => {
-              const binCenter = bins[params.dataIndex];
-              const percentage = ((params.value / data.length) * 100).toFixed(1);
-              return `<strong>📊 Histograma</strong><br/>Centro: ${binCenter.toFixed(3)} ${unit}<br/>Frecuencia: ${params.value} (${percentage}%)`;
-            }
-          }
-        },
-        {
-          name: 'Curva Normal (Campana de Gauss)',
-          type: 'line',
-          data: curveY,
-          smooth: true,
-          lineStyle: {
-            color: '#fbbf24',
-            width: 3.5,
-            type: 'solid'
-          },
-          symbol: 'none',
-          areaStyle: {
-            color: 'rgba(251, 191, 36, 0.15)'
-          },
-          tooltip: {
-            formatter: (params: any) => {
-              const xValue = curveX[params.dataIndex];
-              const densityValue = curveYRaw[params.dataIndex];
-              return `<strong>📈 Curva Normal</strong><br/>Valor: ${xValue.toFixed(3)} ${unit}<br/>Densidad: ${densityValue.toFixed(4)}`;
-            }
-          }
-        },
-        {
-          name: 'Media del Proceso',
-          type: 'line',
-          data: [],
-          markLine: {
-            data: [{ xAxis: mean }],
-            lineStyle: {
-              color: '#10b981',
-              width: 2.5,
-              type: 'solid'
-            },
-            label: {
-              formatter: `Media: ${mean.toFixed(3)} ${unit}`,
-              color: '#10b981',
-              position: 'middle',
-              fontWeight: 'bold'
-            },
-            symbol: 'none'
-          }
-        }
-      ]
-    };
-
-    // Añadir LIE si existe
-    if (lie !== null) {
-      (option.series as any[]).push({
-        name: 'LIE',
-        type: 'line',
-        data: [],
-        markLine: {
-          data: [{ xAxis: lie }],
-          lineStyle: {
-            color: '#f59e0b',
-            width: 2.5,
-            type: 'dashed'
-          },
-          label: {
-            formatter: `LIE: ${lie} ${unit}`,
-            color: '#f59e0b',
-            position: 'start',
-            fontWeight: 'bold'
-          },
-          symbol: 'none'
-        }
-      });
-    }
-
-    // Añadir LSE si existe
-    if (lse !== null) {
-      (option.series as any[]).push({
-        name: 'LSE',
-        type: 'line',
-        data: [],
-        markLine: {
-          data: [{ xAxis: lse }],
-          lineStyle: {
-            color: '#f59e0b',
-            width: 2.5,
-            type: 'dashed'
-          },
-          label: {
-            formatter: `LSE: ${lse} ${unit}`,
-            color: '#f59e0b',
-            position: 'end',
-            fontWeight: 'bold'
-          },
-          symbol: 'none'
-        }
-      });
-    }
-
-    // Añadir objetivo si existe
-    if (target !== null && target !== undefined) {
-      (option.series as any[]).push({
-        name: 'Nominal',
-        type: 'line',
-        data: [],
-        markLine: {
-          data: [{ xAxis: target }],
-          lineStyle: {
-            color: '#8b5cf6',
-            width: 2,
-            type: 'dotted'
-          },
-          label: {
-            formatter: `Nominal: ${target} ${unit}`,
-            color: '#8b5cf6',
-            position: 'middle'
-          },
-          symbol: 'none'
-        }
-      });
-    }
-
-    // Áreas sombreadas fuera de especificación
-    if (lie !== null) {
-      (option.series as any[]).push({
-        name: 'Zona No Conforme',
-        type: 'line',
-        data: [],
-        markArea: {
-          data: [[{ xAxis: xAxisMin }, { xAxis: lie }]],
-          itemStyle: { color: 'rgba(239, 68, 68, 0.25)' },
-          label: { show: false }
-        }
-      });
-    }
-
-    if (lse !== null) {
-      (option.series as any[]).push({
-        name: 'Zona No Conforme',
-        type: 'line',
-        data: [],
-        markArea: {
-          data: [[{ xAxis: lse }, { xAxis: xAxisMax }]],
-          itemStyle: { color: 'rgba(239, 68, 68, 0.25)' },
-          label: { show: false }
-        }
-      });
-    }
-
-    const legendData = ['Histograma', 'Curva Normal (Campana de Gauss)', 'Media del Proceso'];
-    if (lie !== null) legendData.push('LIE');
-    if (lse !== null) legendData.push('LSE');
-    if (target !== null && target !== undefined) legendData.push('Nominal');
-    
-    (option as any).legend = {
-      data: legendData,
-      orient: 'horizontal',
-      left: 'left',
-      top: 0,
-      textStyle: { color: '#8f9bb3', fontSize: 11 },
-      itemWidth: 25,
-      itemHeight: 12
-    };
-
-    (option as any).toolbox = {
-      feature: {
-        saveAsImage: { 
-          title: 'Guardar como imagen',
-          name: 'histograma_campana_gauss'
-        },
-        zoom: { title: { zoom: 'Zoom', back: 'Restablecer' } },
-        restore: { title: 'Restablecer' }
+      series: series,
+      legend: {
+        data: legendData,
+        orient: 'horizontal',
+        left: 'left',
+        top: 0,
+        textStyle: { color: '#8f9bb3', fontSize: 11 },
+        itemWidth: 25,
+        itemHeight: 12
       },
-      iconStyle: { borderColor: '#8f9bb3' }
+      toolbox: {
+        feature: {
+          saveAsImage: { 
+            title: 'Guardar como imagen',
+            name: 'histograma_distribucion'
+          },
+          zoom: { title: { zoom: 'Zoom', back: 'Restablecer' } },
+          restore: { title: 'Restablecer' }
+        },
+        iconStyle: { borderColor: '#8f9bb3' }
+      }
     };
 
     chartInstance.current.setOption(option);
@@ -392,7 +393,7 @@ const ProcessHistogram: React.FC<ProcessHistogramProps> = ({
       window.removeEventListener('resize', handleResize);
       chartInstance.current?.dispose();
     };
-  }, [data, mean, sigma, lie, lse, target, unit, bins, frequencies, curveX, curveYRaw, curveY, maxFrequency, xAxisMin, xAxisMax, yAxisMax]);
+  }, [data, mean, sigma, lie, lse, target, unit, bins, frequencies, curveX, curveYDensity, curveYScaled, maxFrequency, xAxisMin, xAxisMax, yAxisMax, totalDataPoints]);
 
   // Calcular estadísticas
   const withinSpec = data.filter(v => {

@@ -13,7 +13,7 @@ import CapabilityInput from '../CapabilityInput';
 import CapabilityResults from '../CapabilityResults';
 import ExecutiveReport from '../ExecutiveReport';
 import AdvancedMetrics from '../AdvancedMetrics';
-import ProcessHistogram from '../ProcessHistogram';
+import ProcessHistogram from '../../components/ProcessHistogramChartJS';
 import NormalityCheck from '../NormalityCheck';
 
 // ============ ESTILOS ============
