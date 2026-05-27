@@ -13,18 +13,23 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 
-// Registrar componentes de Chart.js
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
+// Registrar componentes de Chart.js SOLO UNA VEZ y con manejo de errores
+try {
+  ChartJS.register(
+    CategoryScale,
+    LinearScale,
+    BarElement,
+    LineElement,
+    PointElement,
+    Title,
+    Tooltip,
+    Legend,
+    Filler
+  );
+  console.log('Chart.js registrado correctamente');
+} catch (error) {
+  console.error('Error registrando Chart.js:', error);
+}
 
 // Estilos en línea para evitar conflictos con Styled Components
 const containerStyle: React.CSSProperties = {
