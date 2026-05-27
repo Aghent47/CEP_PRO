@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { calculateXRChartData, detectOutOfControlPoints } from '../../utils/spcCalculations';
@@ -11,10 +11,13 @@ import ControlChart from '../ControlChart';
 import AlarmPanel from '../AlarmPanel';
 import CapabilityInput from '../CapabilityInput';
 import CapabilityResults from '../CapabilityResults';
-import ExecutiveReport from '../ExecutiveReport';
-import AdvancedMetrics from '../AdvancedMetrics';
-import ProcessHistogram from '../../components/ProcessHistogramChartJS';
 import NormalityCheck from '../NormalityCheck';
+
+// ============ CARGA DIFERIDA (LAZY LOADING) ============
+// Estos componentes se cargan solo cuando se necesitan
+const ExecutiveReport = lazy(() => import('../ExecutiveReport'));
+const AdvancedMetrics = lazy(() => import('../AdvancedMetrics'));
+const ProcessHistogram = lazy(() => import('../ProcessHistogramChartJS'));
 
 // ============ ESTILOS ============
 const DashboardContainer = styled.div`
@@ -186,6 +189,66 @@ const CleaningButton = styled.button<{ variant?: 'primary' | 'danger' }>`
   }
 `;
 
+const LoadingContainer = styled.div`
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 3rem;
+  text-align: center;
+  border: 1px solid var(--border-color);
+  margin-bottom: 2rem;
+  
+  .spinner {
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--border-color);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+  }
+  
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+  
+  .message {
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+  }
+`;
+
+const ErrorContainer = styled.div`
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid #ef4444;
+  border-radius: 12px;
+  padding: 2rem;
+  text-align: center;
+  color: #fca5a5;
+  margin-bottom: 2rem;
+  
+  .icon {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+  
+  .title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+  }
+  
+  .detail {
+    font-size: 0.8rem;
+    opacity: 0.8;
+  }
+`;
+
+const SuspenseFallback = () => (
+  <LoadingContainer>
+    <div className="spinner"></div>
+    <div className="message">Cargando componente...</div>
+  </LoadingContainer>
+);
+
 // ============ COMPONENTE PRINCIPAL ============
 const Dashboard: React.FC = () => {
   const { 
@@ -208,7 +271,8 @@ const Dashboard: React.FC = () => {
   const [rViolations, setRViolations] = useState<any[]>([]);
   const [phase, setPhase] = useState<'I' | 'II'>('I');
   const [removedSubgroups, setRemovedSubgroups] = useState<number[]>([]);
-  
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const isPhaseI = phase === 'I';
   // Estado para límites de especificación
   const [lie, setLie] = useState<number | null>(null);
   const [lse, setLse] = useState<number | null>(null);
@@ -298,11 +362,12 @@ const Dashboard: React.FC = () => {
   const calculateChart = useCallback(() => {
     if (!data) return;
     
+    setIsLoading(true);
+    
     try {
       let originalSubgroups = data.numericData;
       let subgroups = originalSubgroups;
       
-      // Si hay datos transformados, usarlos
       if (transformedData && transformedData.length > 0) {
         const subgroupSize = selectedSubgroupSize;
         const numSubgroups = Math.floor(transformedData.length / subgroupSize);
@@ -320,6 +385,7 @@ const Dashboard: React.FC = () => {
         setError('Se necesitan al menos 2 subgrupos para el análisis');
         setChartDataXR(null);
         setChartDataXS(null);
+        setIsLoading(false);
         return;
       }
       
@@ -330,6 +396,7 @@ const Dashboard: React.FC = () => {
         setError(`El tamaño de subgrupo seleccionado (${selectedSubgroupSize}) es mayor que el número de mediciones disponibles (${minSize}). Reduce el tamaño.`);
         setChartDataXR(null);
         setChartDataXS(null);
+        setIsLoading(false);
         return;
       }
       
@@ -341,12 +408,10 @@ const Dashboard: React.FC = () => {
         setChartDataXR(result);
         setChartDataXS(null);
         
-        // ============ REGLAS: SOLO REGLA 1 EN FASE I ============
         let xbarViolationsList: any[] = [];
-        let rViolationsList:any[] = [];
+        let rViolationsList: any[] = [];
         
         if (phase === 'I') {
-          // Fase I: SOLO Regla 1 (puntos fuera de control)
           xbarViolationsList = applyPhaseIRules(
             result.xbar.values,
             result.xbar.ucl,
@@ -358,7 +423,6 @@ const Dashboard: React.FC = () => {
             result.r.lcl
           );
         }
-        // En Fase II: NO se aplican reglas
         
         setXbarViolations(xbarViolationsList);
         setRViolations(rViolationsList);
@@ -374,12 +438,10 @@ const Dashboard: React.FC = () => {
         setChartDataXS(result);
         setChartDataXR(null);
         
-        // ============ REGLAS: SOLO REGLA 1 EN FASE I ============
-        let xbarViolationsList: any[]= [];
-        let sViolationsList:any[] = [];
+        let xbarViolationsList: any[] = [];
+        let sViolationsList: any[] = [];
         
         if (phase === 'I') {
-          // Fase I: SOLO Regla 1 (puntos fuera de control)
           xbarViolationsList = applyPhaseIRules(
             result.xbar.values,
             result.xbar.ucl,
@@ -391,7 +453,6 @@ const Dashboard: React.FC = () => {
             result.s.lcl
           );
         }
-        // En Fase II: NO se aplican reglas
         
         setXbarViolations(xbarViolationsList);
         setRViolations(sViolationsList);
@@ -406,9 +467,12 @@ const Dashboard: React.FC = () => {
       
       setError(null);
     } catch (err) {
+      console.error('Error calculando gráficos:', err);
       setError(err instanceof Error ? err.message : 'Error al calcular gráficos');
       setChartDataXR(null);
       setChartDataXS(null);
+    } finally {
+      setIsLoading(false);
     }
   }, [data, selectedSubgroupSize, phase, removedSubgroups, setChartDataXR, setChartDataXS, lie, lse, determineChartType, transformedData]);
 
@@ -425,7 +489,6 @@ const Dashboard: React.FC = () => {
     }
   }, [chartDataXR, chartDataXS]);
 
-  // Efecto para detectar el tamaño real
   useEffect(() => {
     if (data && data.numericData.length > 0) {
       const firstSubgroup = data.numericData[0];
@@ -439,21 +502,18 @@ const Dashboard: React.FC = () => {
     }
   }, [data]);
 
-  // Efecto para recalcular cuando cambia el tamaño
   useEffect(() => {
     if (data && data.numericData.length > 0 && normalityPassed) {
       calculateChart();
     }
   }, [selectedSubgroupSize, calculateChart, data, chartType, normalityPassed]);
 
-  // Efecto para recalcular cuando cambian los subgrupos removidos
   useEffect(() => {
     if (data && data.numericData.length > 0 && phase === 'I' && normalityPassed) {
       calculateChart();
     }
   }, [removedSubgroups, calculateChart, data, phase, normalityPassed]);
 
-  // Efecto para recalcular capacidad cuando cambian especificaciones
   useEffect(() => {
     if (phase === 'II' && lie !== null && lse !== null && lie < lse && normalityPassed) {
       calculateChart();
@@ -524,7 +584,6 @@ const Dashboard: React.FC = () => {
 
   const hasViolations = xbarViolations.length > 0 || rViolations.length > 0;
   const totalOutOfControl = xbarOutOfControl.length + rOutOfControl.length;
-  const totalViolations = xbarRuleViolations.length + rRuleViolations.length;
   
   const hasSpecs = lie !== null && lse !== null && lie < lse;
 
@@ -538,7 +597,6 @@ const Dashboard: React.FC = () => {
   const currentChartData = chartDataXR || chartDataXS;
   const isXRRChart = chartType === 'X-R';
 
-  // Extraer todos los datos para la prueba de normalidad
   const getAllDataForNormality = (): number[] => {
     const allData: number[] = [];
     if (transformedData && transformedData.length > 0) {
@@ -552,7 +610,6 @@ const Dashboard: React.FC = () => {
     return allData;
   };
 
-  // Si aún no se ha verificado la normalidad, mostrar el componente
   if (showNormalityCheck) {
     return (
       <DashboardContainer>
@@ -576,8 +633,8 @@ const Dashboard: React.FC = () => {
               setRemovedSubgroups([]);
             }
           }}>
-            <option value="I">Fase I - Estabilización</option>
-            <option value="II">Fase II - Capacidad y Monitoreo</option>
+            <option value="I">Fase I - Estabilización (Limpieza de datos)</option>
+            <option value="II">Fase II - Monitoreo y Capacidad</option>
           </select>
         </ConfigGroup>
         <ConfigGroup>
@@ -626,7 +683,9 @@ const Dashboard: React.FC = () => {
         </ConfigGroup>
         <ConfigGroup>
           <label>&nbsp;</label>
-          <Button onClick={calculateChart}>Recalcular</Button>
+          <Button onClick={calculateChart} disabled={isLoading}>
+            {isLoading ? 'Calculando...' : 'Recalcular'}
+          </Button>
         </ConfigGroup>
       </ConfigPanel>
 
@@ -643,14 +702,22 @@ const Dashboard: React.FC = () => {
         </div>
       )}
 
+      {error && (
+        <ErrorContainer>
+          <div className="icon">❌</div>
+          <div className="title">Error en el análisis</div>
+          <div className="detail">{error}</div>
+        </ErrorContainer>
+      )}
+
       {phase === 'I' && (
         <CleaningPanel>
           <div className="info">
             {removedSubgroups.length > 0 ? (
               <>🗑️ Subgrupos removidos: <strong>{removedSubgroups.map(i => i + 1).join(', ')}</strong></>
             ) : (
-              <>📊 {totalOutOfControl > 0 || totalViolations > 0 ? 
-                `Se detectaron ${totalOutOfControl + totalViolations} puntos problemáticos (Regla 1 - Fuera de Control)` : 
+              <>📊 {totalOutOfControl > 0 ? 
+                `Se detectaron ${totalOutOfControl} puntos fuera de control (Regla 1)` : 
                 '✅ Proceso estable - No se detectaron puntos fuera de control'}
               </>
             )}
@@ -658,7 +725,7 @@ const Dashboard: React.FC = () => {
           <div style={{ display: 'flex', gap: '0.5rem' }}>
             <CleaningButton 
               onClick={handleRemoveOutOfControl}
-              disabled={!(totalOutOfControl > 0 || totalViolations > 0)}
+              disabled={!(totalOutOfControl > 0)}
               variant="danger"
             >
               Eliminar todos los puntos fuera de control
@@ -668,23 +735,6 @@ const Dashboard: React.FC = () => {
             </CleaningButton>
           </div>
         </CleaningPanel>
-      )}
-
-      {phase === 'II' && (
-        <CapabilityInput onSpecsChange={handleSpecsChange} unit={unit} />
-      )}
-
-      {error && (
-        <div style={{ 
-          background: 'rgba(239, 68, 68, 0.1)', 
-          border: '1px solid #ef4444',
-          borderRadius: '12px',
-          padding: '1rem',
-          marginBottom: '1rem',
-          color: '#fca5a5'
-        }}>
-          ❌ {error}
-        </div>
       )}
 
       {hasViolations && phase === 'I' && (
@@ -706,149 +756,177 @@ const Dashboard: React.FC = () => {
         </>
       )}
 
-      {phase === 'II' && currentChartData && hasSpecs && (
-        <CapabilityResults
-          cp={capabilityIndices.cp}
-          cpk={capabilityIndices.cpk}
-          cpl={capabilityIndices.cpl}
-          cpu={capabilityIndices.cpu}
-          k={capabilityIndices.k}
-          ppm={capabilityIndices.ppm}
-          sigmaLevel={capabilityIndices.sigmaLevel}
-          isStable={true}
-          hasSpecs={hasSpecs}
-        />
-      )}
-
-      
-
-      {phase === 'II' && currentChartData && (
-        <AdvancedMetrics 
-          currentN={selectedSubgroupSize} 
-          currentSamplingTime={1}
-        />
-      )}
-
-      {currentChartData && (
+      {/* ========== FASE II ========== */}
+      {phase === 'II' && (
         <>
-          <StatsGrid>
-            <StatCard>
-              <div className="label">Media del Proceso (X̄̄)</div>
-              <div className="value">{currentChartData.xbar.centerLine.toFixed(4)}</div>
-              <span className="unit">{unit}</span>
-            </StatCard>
-            <StatCard>
-              <div className="label">{isXRRChart ? 'Rango Promedio (R̄)' : 's Promedio (s̄)'}</div>
-              <div className="value">{isXRRChart ? chartDataXR!.r.centerLine.toFixed(4) : chartDataXS!.s.centerLine.toFixed(4)}</div>
-              <span className="unit">{unit}</span>
-            </StatCard>
-            <StatCard>
-              <div className="label">Sigma del Proceso</div>
-              <div className="value">{calculateProcessSigma()}</div>
-              <span className="unit">{unit}</span>
-            </StatCard>
-            <StatCard>
-              <div className="label">Subgrupos Activos</div>
-              <div className="value">{currentChartData.subgroups.length}</div>
-              <span className="unit">de {data.numericData.length}</span>
-            </StatCard>
-          </StatsGrid>
-
-          {isXRRChart && chartDataXR && (
+          <CapabilityInput onSpecsChange={handleSpecsChange} unit={unit} />
+          
+          {isLoading && (
+            <LoadingContainer>
+              <div className="spinner"></div>
+              <div className="message">Procesando datos y generando gráficos...</div>
+            </LoadingContainer>
+          )}
+          
+          {!isLoading && error && (
+            <ErrorContainer>
+              <div className="icon">⚠️</div>
+              <div className="title">Error al cargar el análisis</div>
+              <div className="detail">{error}</div>
+            </ErrorContainer>
+          )}
+          
+          {!isLoading && !error && currentChartData ? (
             <>
-              <ControlChart
-                title="Carta X̄ (Gráfico de Medias)"
-                values={chartDataXR.xbar.values}
-                centerLine={chartDataXR.xbar.centerLine}
-                ucl={chartDataXR.xbar.ucl}
-                lcl={chartDataXR.xbar.lcl}
-                outOfControlPoints={phase === 'I' ? xbarOutOfControl : []}
-                ruleViolationPoints={phase === 'I' ? xbarRuleViolations : []}
-                unit={unit}
-                onPointClick={(point) => console.log('Clic en punto:', point)}
-              />
-              <ControlChart
-                title="Carta R (Gráfico de Rangos)"
-                values={chartDataXR.r.values}
-                centerLine={chartDataXR.r.centerLine}
-                ucl={chartDataXR.r.ucl}
-                lcl={chartDataXR.r.lcl}
-                outOfControlPoints={phase === 'I' ? rOutOfControl : []}
-                ruleViolationPoints={phase === 'I' ? rRuleViolations : []}
-                unit={unit}
-                onPointClick={(point) => console.log('Clic en punto:', point)}
-              />
-            </>
-          )}
+              {hasSpecs && (
+                <CapabilityResults
+                  cp={capabilityIndices.cp}
+                  cpk={capabilityIndices.cpk}
+                  cpl={capabilityIndices.cpl}
+                  cpu={capabilityIndices.cpu}
+                  k={capabilityIndices.k}
+                  ppm={capabilityIndices.ppm}
+                  sigmaLevel={capabilityIndices.sigmaLevel}
+                  isStable={true}
+                  hasSpecs={hasSpecs}
+                />
+              )}
+              
+              <StatsGrid>
+                <StatCard>
+                  <div className="label">Media del Proceso (X̄̄)</div>
+                  <div className="value">{currentChartData.xbar.centerLine.toFixed(4)}</div>
+                  <span className="unit">{unit}</span>
+                </StatCard>
+                <StatCard>
+                  <div className="label">{isXRRChart ? 'Rango Promedio (R̄)' : 's Promedio (s̄)'}</div>
+                  <div className="value">{isXRRChart ? chartDataXR!.r.centerLine.toFixed(4) : chartDataXS!.s.centerLine.toFixed(4)}</div>
+                  <span className="unit">{unit}</span>
+                </StatCard>
+                <StatCard>
+                  <div className="label">Sigma del Proceso</div>
+                  <div className="value">{calculateProcessSigma()}</div>
+                  <span className="unit">{unit}</span>
+                </StatCard>
+                <StatCard>
+                  <div className="label">Subgrupos Activos</div>
+                  <div className="value">{currentChartData.subgroups.length}</div>
+                  <span className="unit">de {data.numericData.length}</span>
+                </StatCard>
+              </StatsGrid>
 
-          {!isXRRChart && chartDataXS && (
-            <>
-              <ControlChart
-                title="Carta X̄ (Gráfico de Medias)"
-                values={chartDataXS.xbar.values}
-                centerLine={chartDataXS.xbar.centerLine}
-                ucl={chartDataXS.xbar.ucl}
-                lcl={chartDataXS.xbar.lcl}
-                outOfControlPoints={phase === 'I' ? xbarOutOfControl : []}
-                ruleViolationPoints={phase === 'I' ? xbarRuleViolations : []}
-                unit={unit}
-                onPointClick={(point) => console.log('Clic en punto:', point)}
-              />
-              <ControlChart
-                title="Carta s (Gráfico de Desviación Estándar)"
-                values={chartDataXS.s.values}
-                centerLine={chartDataXS.s.centerLine}
-                ucl={chartDataXS.s.ucl}
-                lcl={chartDataXS.s.lcl}
-                outOfControlPoints={phase === 'I' ? rOutOfControl : []}
-                ruleViolationPoints={phase === 'I' ? rRuleViolations : []}
-                unit={unit}
-                onPointClick={(point) => console.log('Clic en punto:', point)}
-              />
-            </>
-          )}
+              {isXRRChart && chartDataXR && (
+                <>
+                  <ControlChart
+                    title="Carta X̄ (Gráfico de Medias)"
+                    values={chartDataXR.xbar.values}
+                    centerLine={chartDataXR.xbar.centerLine}
+                    ucl={chartDataXR.xbar.ucl}
+                    lcl={chartDataXR.xbar.lcl}
+                    outOfControlPoints={isPhaseI? xbarOutOfControl : []}
+                    ruleViolationPoints={isPhaseI? xbarRuleViolations : []}
+                    unit={unit}
+                    onPointClick={(point) => console.log('Clic en punto:', point)}
+                  />
+                  <ControlChart
+                    title="Carta R (Gráfico de Rangos)"
+                    values={chartDataXR.r.values}
+                    centerLine={chartDataXR.r.centerLine}
+                    ucl={chartDataXR.r.ucl}
+                    lcl={chartDataXR.r.lcl}
+                    outOfControlPoints={isPhaseI ? rOutOfControl : []}
+                    ruleViolationPoints={isPhaseI ? rRuleViolations : []}
+                    unit={unit}
+                    onPointClick={(point) => console.log('Clic en punto:', point)}
+                  />
+                </>
+              )}
 
-          {/* Histograma - SOLO en Fase II */}
-          {phase === 'II' && currentChartData && (
-            <ProcessHistogram
-              data={(() => {
-                if (!data) return [];
-                const allData: number[] = [];
-                if (transformedData && transformedData.length > 0) {
-                  return transformedData;
-                }
-                data.numericData.forEach(subgroup => {
-                  subgroup.forEach(value => {
-                    allData.push(value);
-                  });
-                });
-                return allData;
-              })()}
-              mean={currentChartData.xbar.centerLine}
-              sigma={parseFloat(calculateProcessSigma())}
-              lie={lie}
-              lse={lse}
-              target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
-              unit={unit}
-              title="Distribución del Proceso vs Especificaciones"
-            />
-          )}
-          {phase === 'II' && currentChartData && (
-    <ExecutiveReport
-    fileName={fileName || 'Sin nombre'}
-    chartData={currentChartData}
-    capabilityIndices={capabilityIndices}
-    unit={unit}
-    lie={lie}
-    lse={lse}
-    xbarViolations={xbarViolations}
-    rViolations={rViolations}
-    removedSubgroups={removedSubgroups}
-    originalSubgroupsCount={data?.numericData.length || 0}
-    chartType={chartType as 'X-R' | 'X-s'}
-    currentPhase={phase}  // ← Esta línea es clave
-  />
-)}
+              {!isXRRChart && chartDataXS && (
+                <>
+                  <ControlChart
+                    title="Carta X̄ (Gráfico de Medias)"
+                    values={chartDataXS.xbar.values}
+                    centerLine={chartDataXS.xbar.centerLine}
+                    ucl={chartDataXS.xbar.ucl}
+                    lcl={chartDataXS.xbar.lcl}
+                    outOfControlPoints={isPhaseI ? xbarOutOfControl : []}
+                    ruleViolationPoints={isPhaseI? xbarRuleViolations : []}
+                    unit={unit}
+                    onPointClick={(point) => console.log('Clic en punto:', point)}
+                  />
+                  <ControlChart
+                    title="Carta s (Gráfico de Desviación Estándar)"
+                    values={chartDataXS.s.values}
+                    centerLine={chartDataXS.s.centerLine}
+                    ucl={chartDataXS.s.ucl}
+                    lcl={chartDataXS.s.lcl}
+                    outOfControlPoints={isPhaseI ? rOutOfControl : []}
+                    ruleViolationPoints={isPhaseI ? rRuleViolations : []}
+                    unit={unit}
+                    onPointClick={(point) => console.log('Clic en punto:', point)}
+                  />
+                </>
+              )}
+
+              <Suspense fallback={<SuspenseFallback />}>
+                <ProcessHistogram
+                  data={(() => {
+                    if (!data) return [];
+                    const allData: number[] = [];
+                    if (transformedData && transformedData.length > 0) {
+                      return transformedData;
+                    }
+                    data.numericData.forEach(subgroup => {
+                      subgroup.forEach(value => {
+                        allData.push(value);
+                      });
+                    });
+                    return allData;
+                  })()}
+                  mean={currentChartData.xbar.centerLine}
+                  sigma={parseFloat(calculateProcessSigma())}
+                  lie={lie}
+                  lse={lse}
+                  target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
+                  unit={unit}
+                  title="Distribución del Proceso vs Especificaciones"
+                />
+              </Suspense>
+
+              <Suspense fallback={<SuspenseFallback />}>
+                <AdvancedMetrics 
+                  currentN={selectedSubgroupSize} 
+                  currentSamplingTime={1}
+                />
+              </Suspense>
+
+              <Suspense fallback={<SuspenseFallback />}>
+                <ExecutiveReport
+                  fileName={fileName || 'Sin nombre'}
+                  chartData={currentChartData}
+                  capabilityIndices={capabilityIndices}
+                  unit={unit}
+                  lie={lie}
+                  lse={lse}
+                  xbarViolations={xbarViolations}
+                  rViolations={rViolations}
+                  removedSubgroups={removedSubgroups}
+                  originalSubgroupsCount={data?.numericData.length || 0}
+                  chartType={chartType as 'X-R' | 'X-s'}
+                  currentPhase={phase}
+                />
+              </Suspense>
+            </>
+          ) : !isLoading && !currentChartData && !error ? (
+            <LoadingContainer>
+              <div className="spinner"></div>
+              <div className="message">Preparando el análisis de capacidad...</div>
+              <div className="message" style={{ fontSize: '0.7rem', marginTop: '0.5rem' }}>
+                Esto puede tomar unos segundos
+              </div>
+            </LoadingContainer>
+          ) : null}
         </>
       )}
     </DashboardContainer>
