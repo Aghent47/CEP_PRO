@@ -818,28 +818,28 @@ const Dashboard: React.FC = () => {
             </>
           )}
 
-          <ProcessHistogram
-            data={(() => {
-              if (!data) return [];
-              const allData: number[] = [];
-              if (transformedData && transformedData.length > 0) {
-                return transformedData;
-              }
-              data.numericData.forEach(subgroup => {
-                subgroup.forEach(value => {
-                  allData.push(value);
-                });
-              });
-              return allData;
-            })()}
-            mean={currentChartData.xbar.centerLine}
-            sigma={parseFloat(calculateProcessSigma())}
-            lie={lie}
-            lse={lse}
-            target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
-            unit={unit}
-            title="Distribución del Proceso vs Especificaciones"
-          />
+         {phase === 'II' && currentChartData && (
+      <ProcessHistogram
+        data={(() => {
+          if (!data) return [];
+          const allData: number[] = [];
+          data.numericData.forEach(subgroup => {
+            subgroup.forEach(value => {
+              allData.push(value);
+            });
+          });
+          return allData;
+        })()}
+        mean={currentChartData.xbar.centerLine}
+        sigma={parseFloat(calculateProcessSigma())}
+        lie={lie}
+        lse={lse}
+        target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
+        unit={unit}
+        title="Distribución del Proceso vs Especificaciones"
+      />
+    )}
+
         </>
       )}
     </DashboardContainer>
