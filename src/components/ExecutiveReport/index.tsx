@@ -337,12 +337,6 @@ CLASIFICACIÓN FINAL: ${classification.grade} - ${classification.text}
       <ReportHeader>
         <h3>📋 Reporte Ejecutivo</h3>
         <div className="button-group">
-          <ExportButton variant="pdf" onClick={exportToPDF}>
-            📄 Exportar PDF
-          </ExportButton>
-          <ExportButton variant="csv" onClick={exportToCSV}>
-            📊 Exportar CSV
-          </ExportButton>
           <ExportButton variant="txt" onClick={exportToTXT}>
             📝 Exportar TXT
           </ExportButton>

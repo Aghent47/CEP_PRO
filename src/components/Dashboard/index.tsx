@@ -3,7 +3,7 @@ import styled from 'styled-components';
 import { useDataStore } from '../../store/dataStore';
 import { calculateXRChartData, detectOutOfControlPoints } from '../../utils/spcCalculations';
 import { calculateXSChartData } from '../../utils/spcCalculationsXS';
-import { applyAllNelsonRules, getAllViolationPoints } from '../../utils/nelsonRules';
+import { applyPhaseIRules, getAllViolationPoints } from '../../utils/nelsonRules';
 import { calculateAllCapabilityIndices } from '../../utils/capabilityCalculations';
 import type { CapabilityResult } from '../../utils/capabilityCalculations';
 import { getRecommendedChartType } from '../../utils/spcConstants';
@@ -304,7 +304,6 @@ const Dashboard: React.FC = () => {
       
       // Si hay datos transformados, usarlos
       if (transformedData && transformedData.length > 0) {
-        // Reorganizar datos transformados en subgrupos
         const subgroupSize = selectedSubgroupSize;
         const numSubgroups = Math.floor(transformedData.length / subgroupSize);
         subgroups = [];
@@ -335,7 +334,6 @@ const Dashboard: React.FC = () => {
       }
       
       const trimmedSubgroups = subgroups.map(sg => sg.slice(0, selectedSubgroupSize));
-      
       const recommendedType = determineChartType(selectedSubgroupSize);
       
       if (recommendedType === 'X-R') {
@@ -343,21 +341,24 @@ const Dashboard: React.FC = () => {
         setChartDataXR(result);
         setChartDataXS(null);
         
-        const xbarViolationsList = applyAllNelsonRules(
-          result.xbar.values,
-          result.xbar.centerLine,
-          result.xbar.ucl,
-          result.xbar.lcl,
-          result.xbar.sigma
-        );
+        // ============ REGLAS: SOLO REGLA 1 EN FASE I ============
+        let xbarViolationsList: any[] = [];
+        let rViolationsList:any[] = [];
         
-        const rViolationsList = applyAllNelsonRules(
-          result.r.values,
-          result.r.centerLine,
-          result.r.ucl,
-          result.r.lcl,
-          result.r.sigma
-        );
+        if (phase === 'I') {
+          // Fase I: SOLO Regla 1 (puntos fuera de control)
+          xbarViolationsList = applyPhaseIRules(
+            result.xbar.values,
+            result.xbar.ucl,
+            result.xbar.lcl
+          );
+          rViolationsList = applyPhaseIRules(
+            result.r.values,
+            result.r.ucl,
+            result.r.lcl
+          );
+        }
+        // En Fase II: NO se aplican reglas
         
         setXbarViolations(xbarViolationsList);
         setRViolations(rViolationsList);
@@ -373,21 +374,24 @@ const Dashboard: React.FC = () => {
         setChartDataXS(result);
         setChartDataXR(null);
         
-        const xbarViolationsList = applyAllNelsonRules(
-          result.xbar.values,
-          result.xbar.centerLine,
-          result.xbar.ucl,
-          result.xbar.lcl,
-          result.xbar.sigma
-        );
+        // ============ REGLAS: SOLO REGLA 1 EN FASE I ============
+        let xbarViolationsList: any[]= [];
+        let sViolationsList:any[] = [];
         
-        const sViolationsList = applyAllNelsonRules(
-          result.s.values,
-          result.s.centerLine,
-          result.s.ucl,
-          result.s.lcl,
-          result.s.sigma
-        );
+        if (phase === 'I') {
+          // Fase I: SOLO Regla 1 (puntos fuera de control)
+          xbarViolationsList = applyPhaseIRules(
+            result.xbar.values,
+            result.xbar.ucl,
+            result.xbar.lcl
+          );
+          sViolationsList = applyPhaseIRules(
+            result.s.values,
+            result.s.ucl,
+            result.s.lcl
+          );
+        }
+        // En Fase II: NO se aplican reglas
         
         setXbarViolations(xbarViolationsList);
         setRViolations(sViolationsList);
@@ -646,8 +650,8 @@ const Dashboard: React.FC = () => {
               <>🗑️ Subgrupos removidos: <strong>{removedSubgroups.map(i => i + 1).join(', ')}</strong></>
             ) : (
               <>📊 {totalOutOfControl > 0 || totalViolations > 0 ? 
-                `Se detectaron ${totalOutOfControl + totalViolations} puntos problemáticos` : 
-                '✅ Proceso estable - No se detectaron problemas'}
+                `Se detectaron ${totalOutOfControl + totalViolations} puntos problemáticos (Regla 1 - Fuera de Control)` : 
+                '✅ Proceso estable - No se detectaron puntos fuera de control'}
               </>
             )}
           </div>
@@ -657,7 +661,7 @@ const Dashboard: React.FC = () => {
               disabled={!(totalOutOfControl > 0 || totalViolations > 0)}
               variant="danger"
             >
-              Eliminar todos los puntos problemáticos
+              Eliminar todos los puntos fuera de control
             </CleaningButton>
             <CleaningButton onClick={handleResetCleaning} disabled={removedSubgroups.length === 0}>
               Restablecer datos originales
@@ -772,8 +776,8 @@ const Dashboard: React.FC = () => {
                 centerLine={chartDataXR.xbar.centerLine}
                 ucl={chartDataXR.xbar.ucl}
                 lcl={chartDataXR.xbar.lcl}
-                outOfControlPoints={xbarOutOfControl}
-                ruleViolationPoints={xbarRuleViolations}
+                outOfControlPoints={phase === 'I' ? xbarOutOfControl : []}
+                ruleViolationPoints={phase === 'I' ? xbarRuleViolations : []}
                 unit={unit}
                 onPointClick={(point) => console.log('Clic en punto:', point)}
               />
@@ -783,8 +787,8 @@ const Dashboard: React.FC = () => {
                 centerLine={chartDataXR.r.centerLine}
                 ucl={chartDataXR.r.ucl}
                 lcl={chartDataXR.r.lcl}
-                outOfControlPoints={rOutOfControl}
-                ruleViolationPoints={rRuleViolations}
+                outOfControlPoints={phase === 'I' ? rOutOfControl : []}
+                ruleViolationPoints={phase === 'I' ? rRuleViolations : []}
                 unit={unit}
                 onPointClick={(point) => console.log('Clic en punto:', point)}
               />
@@ -799,8 +803,8 @@ const Dashboard: React.FC = () => {
                 centerLine={chartDataXS.xbar.centerLine}
                 ucl={chartDataXS.xbar.ucl}
                 lcl={chartDataXS.xbar.lcl}
-                outOfControlPoints={xbarOutOfControl}
-                ruleViolationPoints={xbarRuleViolations}
+                outOfControlPoints={phase === 'I' ? xbarOutOfControl : []}
+                ruleViolationPoints={phase === 'I' ? xbarRuleViolations : []}
                 unit={unit}
                 onPointClick={(point) => console.log('Clic en punto:', point)}
               />
@@ -810,36 +814,39 @@ const Dashboard: React.FC = () => {
                 centerLine={chartDataXS.s.centerLine}
                 ucl={chartDataXS.s.ucl}
                 lcl={chartDataXS.s.lcl}
-                outOfControlPoints={rOutOfControl}
-                ruleViolationPoints={rRuleViolations}
+                outOfControlPoints={phase === 'I' ? rOutOfControl : []}
+                ruleViolationPoints={phase === 'I' ? rRuleViolations : []}
                 unit={unit}
                 onPointClick={(point) => console.log('Clic en punto:', point)}
               />
             </>
           )}
 
-         {phase === 'II' && currentChartData && (
-      <ProcessHistogram
-        data={(() => {
-          if (!data) return [];
-          const allData: number[] = [];
-          data.numericData.forEach(subgroup => {
-            subgroup.forEach(value => {
-              allData.push(value);
-            });
-          });
-          return allData;
-        })()}
-        mean={currentChartData.xbar.centerLine}
-        sigma={parseFloat(calculateProcessSigma())}
-        lie={lie}
-        lse={lse}
-        target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
-        unit={unit}
-        title="Distribución del Proceso vs Especificaciones"
-      />
-    )}
-
+          {/* Histograma - SOLO en Fase II */}
+          {phase === 'II' && currentChartData && (
+            <ProcessHistogram
+              data={(() => {
+                if (!data) return [];
+                const allData: number[] = [];
+                if (transformedData && transformedData.length > 0) {
+                  return transformedData;
+                }
+                data.numericData.forEach(subgroup => {
+                  subgroup.forEach(value => {
+                    allData.push(value);
+                  });
+                });
+                return allData;
+              })()}
+              mean={currentChartData.xbar.centerLine}
+              sigma={parseFloat(calculateProcessSigma())}
+              lie={lie}
+              lse={lse}
+              target={lie !== null && lse !== null ? (lie + lse) / 2 : null}
+              unit={unit}
+              title="Distribución del Proceso vs Especificaciones"
+            />
+          )}
         </>
       )}
     </DashboardContainer>

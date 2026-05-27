@@ -127,9 +127,6 @@ const CapabilityInput: React.FC<CapabilityInputProps> = ({ onSpecsChange, unit }
           <Button onClick={handleApply}>Aplicar Especificaciones</Button>
         </InputGroup>
       </InputGrid>
-      <WarningMessage>
-        ℹ️ Los límites de especificación representan la "voz del cliente". Asegúrate de que estos valores reflejen las expectativas y requisitos del cliente para el proceso o producto que estás evaluando.
-      </WarningMessage>
     </InputContainer>
   );
 };
