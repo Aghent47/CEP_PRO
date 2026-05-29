@@ -9,6 +9,8 @@
  *    - El límite SIEMPRE es 0.05, sin importar el tamaño de muestra
  */
 
+import { jStat } from 'jstat';
+
 export interface NormalityResult {
   isNormal: boolean;
   shapiroWilk: {
@@ -72,12 +74,8 @@ export function calculateShapiroWilk(data: number[]): { statistic: number; pValu
   for (let i = 1; i <= n; i++) {
     // Aproximación de Blom (1958): p = (i - 0.375) / (n + 0.25)
     const p = (i - 0.375) / (n + 0.25);
-    let z = 0;
-    if (p < 0.5) {
-      z = -Math.sqrt(2) * Math.sqrt(-Math.log(2 * p));
-    } else {
-      z = Math.sqrt(2) * Math.sqrt(-Math.log(2 * (1 - p)));
-    }
+    // Usar la inversa de la normal estándar (probit) mediante jStat para precisión
+    const z = jStat.normal.inv(p, 0, 1);
     m.push(z);
   }
   
@@ -99,41 +97,32 @@ export function calculateShapiroWilk(data: number[]): { statistic: number; pValu
   }
   const numerator = sumAx * sumAx;
   
-  // 7. Calcular W
+  // 7. Calcular W (sin clamp estricto para que el p-value dependa del valor real de W)
   let W = numerator / s2;
   
-  // Asegurar que W esté entre 0 y 1
-  W = Math.min(0.9999, Math.max(0.0001, W));
+  // Asegurar que W esté en un rango numérico válido pero sin truncar fuertemente
+  W = Math.min(1 - 1e-12, Math.max(1e-12, W));
   
   // 8. Calcular p-value según Royston (1992)
+  // Transformación: y = log(1 - W) se distribuye aproximadamente normal
+  // Coeficientes polinomiales originales de Royston (1992) para n ≥ 12
   let pValue = 0.5;
   
   if (n >= 4 && n <= 2000) {
     const y = Math.log(1 - W);
-    let mu = 0;
-    let sigma = 0;
+    const lnN = Math.log(n);
     
-    if (n <= 50) {
-      mu = -1.2725 + 0.4598 * Math.log(n);
-      sigma = 0.8814 - 0.0882 * Math.log(n);
-    } else {
-      mu = -0.9532 + 0.4733 * Math.log(n);
-      sigma = 0.7385 - 0.0599 * Math.log(n);
-    }
+    // Royston (1992): μ = -1.5861 - 0.31082·ln(n) - 0.083751·(ln(n))² + 0.0038915·(ln(n))³
+    const mu = -1.5861 - 0.31082 * lnN - 0.083751 * lnN * lnN + 0.0038915 * lnN * lnN * lnN;
+    // Royston (1992): ln(σ) = -0.4803 - 0.082676·ln(n) + 0.0030302·(ln(n))²
+    const sigma = Math.exp(-0.4803 - 0.082676 * lnN + 0.0030302 * lnN * lnN);
     
     const z = (y - mu) / sigma;
     pValue = 1 - normalCDF(z);
-  } else {
-    // Para muestras muy pequeñas
-    if (W > 0.98) pValue = 0.8;
-    else if (W > 0.95) pValue = 0.5;
-    else if (W > 0.90) pValue = 0.2;
-    else if (W > 0.85) pValue = 0.05;
-    else pValue = 0.01;
   }
   
-  // Ajustar p-value al rango [0,1]
-  pValue = Math.min(0.9999, Math.max(0.0001, pValue));
+  // Asegurar que pValue esté en rango [0,1] con tolerancias numéricas (no truncar a 0.9999)
+  pValue = Math.min(1 - 1e-12, Math.max(1e-12, pValue));
   
   return { statistic: W, pValue };
 }
@@ -149,12 +138,8 @@ export function generateQQData(data: number[]): { theoretical: number[]; sample:
   
   for (let i = 0; i < n; i++) {
     const probability = (i + 0.5) / n;
-    let z = 0;
-    if (probability < 0.5) {
-      z = -Math.sqrt(2) * Math.sqrt(-Math.log(2 * probability));
-    } else {
-      z = Math.sqrt(2) * Math.sqrt(-Math.log(2 * (1 - probability)));
-    }
+    // Usar la inversa de la normal estándar (probit) mediante jStat
+    const z = jStat.normal.inv(probability, 0, 1);
     theoretical.push(z);
     sample.push(sortedData[i]);
   }
