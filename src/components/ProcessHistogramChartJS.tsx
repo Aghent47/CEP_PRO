@@ -13,25 +13,22 @@ import {
 } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
 
-// Registrar componentes de Chart.js SOLO UNA VEZ y con manejo de errores
-try {
-  ChartJS.register(
-    CategoryScale,
-    LinearScale,
-    BarElement,
-    LineElement,
-    PointElement,
-    Title,
-    Tooltip,
-    Legend,
-    Filler
-  );
-  console.log('Chart.js registrado correctamente');
-} catch (error) {
-  console.error('Error registrando Chart.js:', error);
-}
+// ============ REGISTRAR TODOS LOS CONTROLADORES ============
+// Es importante registrar LineElement para que funcione el tipo 'line'
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  LineElement,    // ← Necesario para gráficos de línea
+  PointElement,   // ← Necesario para puntos
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+// ========================================================
 
-// Estilos en línea para evitar conflictos con Styled Components
+// Estilos en línea
 const containerStyle: React.CSSProperties = {
   background: '#1a2235',
   borderRadius: '16px',
@@ -85,7 +82,7 @@ interface ProcessHistogramProps {
   title?: string;
 }
 
-const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
+const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
   data,
   mean,
   sigma,
@@ -96,6 +93,7 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
   title = "Distribución del Proceso vs Especificaciones"
 }) => {
   const chartRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   if (!data || data.length === 0) return null;
   if (!sigma || sigma <= 0) return null;
@@ -119,6 +117,7 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
   }
 
   const maxFreq = Math.max(...frequencies);
+  const totalData = data.length;
 
   // ============ 2. GENERAR CURVA NORMAL ============
   const normalPDF = (x: number, mu: number, sig: number): number => {
@@ -139,7 +138,7 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
   console.log('scaleFactor:', scaleFactor);
   console.log('scaledCurve max:', Math.max(...scaledCurve));
 
-  // Configuración del gráfico
+  // Configuración del gráfico - USANDO 'bar' y 'line' correctamente
   const chartData: any = {
     labels: labels,
     datasets: [
@@ -183,7 +182,7 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
             const label = context.dataset.label;
             const value = context.raw;
             if (label === 'Histograma') {
-              const percentage = ((value / data.length) * 100).toFixed(1);
+              const percentage = ((value / totalData) * 100).toFixed(1);
               return `${label}: ${value} (${percentage}%)`;
             }
             return `${label}: ${value.toFixed(4)}`;
@@ -192,7 +191,7 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
       },
       legend: {
         position: 'top',
-        labels: { color: '#e8edf5' }
+        labels: { color: '#e8edf5', font: { size: 11 } }
       }
     },
     scales: {
@@ -200,7 +199,8 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
         title: {
           display: true,
           text: `Valor (${unit})`,
-          color: '#8f9bb3'
+          color: '#8f9bb3',
+          font: { size: 11 }
         },
         ticks: { color: '#8f9bb3' },
         grid: { color: '#1a2235' }
@@ -209,7 +209,8 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
         title: {
           display: true,
           text: 'Frecuencia / Densidad',
-          color: '#8f9bb3'
+          color: '#8f9bb3',
+          font: { size: 11 }
         },
         ticks: { color: '#8f9bb3' },
         grid: { color: '#1a2235' },
@@ -219,81 +220,95 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
     }
   };
 
-  // Añadir líneas verticales
+  // Dibujar líneas verticales (LIE, LSE, Media, Nominal) usando canvas
   useEffect(() => {
-    const canvas = document.getElementById('histogram-canvas');
+    const canvas = canvasRef.current;
     if (!canvas) return;
 
     const drawLines = () => {
-      const ctx = (canvas as HTMLCanvasElement).getContext('2d');
+      const chart = chartRef.current;
+      if (!chart || !chart.scales) return;
+
+      const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      setTimeout(() => {
-        const chart = chartRef.current;
-        if (!chart || !chart.scales) return;
-
-        const xAxis = chart.scales.x;
-        const yAxis = chart.scales.y;
-        
-        ctx.save();
-        
-        const drawVerticalLine = (xValue: number, color: string, label: string, yPos: number) => {
-          const x = xAxis.getPixelForValue(xValue);
-          if (x >= 0 && x <= chart.width) {
-            ctx.beginPath();
-            ctx.moveTo(x, yAxis.top);
-            ctx.lineTo(x, yAxis.bottom);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([8, 6]);
-            ctx.stroke();
-            
-            ctx.fillStyle = color;
-            ctx.font = 'bold 10px monospace';
-            ctx.fillText(label, x + 5, yPos);
-          }
-        };
-        
-        const drawSolidLine = (xValue: number, color: string, label: string) => {
-          const x = xAxis.getPixelForValue(xValue);
-          if (x >= 0 && x <= chart.width) {
-            ctx.beginPath();
-            ctx.moveTo(x, yAxis.top);
-            ctx.lineTo(x, yAxis.bottom);
-            ctx.strokeStyle = color;
-            ctx.lineWidth = 2.5;
-            ctx.setLineDash([]);
-            ctx.stroke();
-            
-            ctx.fillStyle = color;
-            ctx.font = 'bold 11px monospace';
-            ctx.fillText(label, x + 5, yAxis.top + 20);
-          }
-        };
-        
-        ctx.setLineDash([8, 6]);
-        
-        if (lie !== null) drawVerticalLine(lie, '#f59e0b', `LIE: ${lie} ${unit}`, yAxis.top + 15);
-        if (lse !== null) drawVerticalLine(lse, '#f59e0b', `LSE: ${lse} ${unit}`, yAxis.bottom - 10);
-        if (target !== null && target !== undefined) drawVerticalLine(target, '#8b5cf6', `Nominal: ${target} ${unit}`, yAxis.top + 40);
-        
-        drawSolidLine(mean, '#10b981', `Media: ${mean.toFixed(3)} ${unit}`);
-        
-        ctx.restore();
-      }, 100);
+      const xAxis = chart.scales.x;
+      const yAxis = chart.scales.y;
+      
+      ctx.save();
+      ctx.font = 'bold 11px monospace';
+      
+      const drawDashedLine = (xValue: number, color: string, label: string, yPos: number) => {
+        const x = xAxis.getPixelForValue(xValue);
+        if (x >= 0 && x <= chart.width) {
+          ctx.beginPath();
+          ctx.moveTo(x, yAxis.top);
+          ctx.lineTo(x, yAxis.bottom);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([8, 6]);
+          ctx.stroke();
+          
+          ctx.fillStyle = color;
+          ctx.fillText(label, x + 5, yPos);
+        }
+      };
+      
+      const drawSolidLine = (xValue: number, color: string, label: string) => {
+        const x = xAxis.getPixelForValue(xValue);
+        if (x >= 0 && x <= chart.width) {
+          ctx.beginPath();
+          ctx.moveTo(x, yAxis.top);
+          ctx.lineTo(x, yAxis.bottom);
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.setLineDash([]);
+          ctx.stroke();
+          
+          ctx.fillStyle = color;
+          ctx.fillText(label, x + 5, yAxis.top + 20);
+        }
+      };
+      
+      const drawShadedArea = (startX: number, endX: number, color: string) => {
+        const x1 = xAxis.getPixelForValue(startX);
+        const x2 = xAxis.getPixelForValue(endX);
+        if (x1 >= 0 && x2 <= chart.width && x1 < x2) {
+          ctx.fillStyle = color;
+          ctx.fillRect(x1, yAxis.top, x2 - x1, yAxis.bottom - yAxis.top);
+        }
+      };
+      
+      ctx.setLineDash([8, 6]);
+      
+      const xMin = xAxis.min;
+      const xMax = xAxis.max;
+      
+      if (lie !== null) {
+        drawShadedArea(xMin, lie, 'rgba(239, 68, 68, 0.15)');
+        drawDashedLine(lie, '#10b981', `LIE: ${lie} ${unit}`, yAxis.top + 15);
+      }
+      
+      if (lse !== null) {
+        drawShadedArea(lse, xMax, 'rgba(239, 68, 68, 0.15)');
+        drawDashedLine(lse, '#10b981', `LSE: ${lse} ${unit}`, yAxis.bottom - 10);
+      }
+      
+      if (target !== null && target !== undefined) {
+        drawDashedLine(target, '#8b5cf6', `Nominal: ${target} ${unit}`, yAxis.top + 40);
+      }
+      
+      drawSolidLine(mean, '#3b82f6', `Media: ${mean.toFixed(3)} ${unit}`);
+      
+      ctx.restore();
     };
-
-    drawLines();
     
-    window.addEventListener('resize', drawLines);
-    const observer = new MutationObserver(drawLines);
-    observer.observe(canvas, { attributes: true, childList: true, subtree: true });
+    const timeout = setTimeout(() => {
+      drawLines();
+    }, 150);
     
-    return () => {
-      window.removeEventListener('resize', drawLines);
-      observer.disconnect();
-    };
-  }, [data, mean, sigma, lie, lse, target, unit]);
+    return () => clearTimeout(timeout);
+  }, [data, mean, sigma, lie, lse, target, unit, labels, frequencies]);
 
   // Estadísticas
   const withinSpec = data.filter(v => {
@@ -304,65 +319,92 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
 
   const belowLIE = lie !== null ? data.filter(v => v < lie).length : 0;
   const aboveLSE = lse !== null ? data.filter(v => v > lse).length : 0;
+  
+  const toleranceUsage = (lie !== null && lse !== null) 
+    ? ((6 * sigma) / (lse - lie)) * 100 
+    : 0;
 
   return (
     <div style={containerStyle}>
       <div style={titleStyle}>
         <span>📊</span> {title}
       </div>
+      
       <div style={chartWrapperStyle}>
+        <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
         <Bar 
           ref={chartRef}
           data={chartData} 
           options={options}
-          id="histogram-canvas"
         />
       </div>
       
+      {lie !== null && lse !== null && (
+        <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
+          <div style={{ 
+            background: '#2a3448', 
+            borderRadius: '8px', 
+            height: '8px', 
+            overflow: 'hidden' 
+          }}>
+            <div style={{ 
+              width: `${Math.min(toleranceUsage, 100)}%`, 
+              height: '100%', 
+              background: 'linear-gradient(90deg, #3b82f6, #8b5cf6)',
+              borderRadius: '8px'
+            }} />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem', fontSize: '0.65rem', color: '#8f9bb3' }}>
+            <span>📏 Consume {toleranceUsage.toFixed(1)}% de tolerancia</span>
+            <span>{toleranceUsage > 80 ? '⚠️ Alto' : toleranceUsage > 60 ? '⚠️ Moderado' : '✓ Aceptable'}</span>
+          </div>
+        </div>
+      )}
+      
       <div style={statsGridStyle}>
-        <div style={statBadgeStyle('#10b981')}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Media del Proceso</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{mean.toFixed(3)} {unit}</div>
+        <div style={statBadgeStyle('#3b82f6')}>
+          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Media del Proceso</div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{mean.toFixed(3)} {unit}</div>
         </div>
         <div style={statBadgeStyle('#ef4444')}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Sigma del Proceso</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{sigma.toFixed(4)} {unit}</div>
+          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Sigma del Proceso</div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{sigma.toFixed(4)} {unit}</div>
         </div>
         {target !== null && target !== undefined && (
           <div style={statBadgeStyle('#8b5cf6')}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>Valor Nominal</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{target} {unit}</div>
+            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Valor Nominal</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{target} {unit}</div>
           </div>
         )}
         {lie !== null && (
-          <div style={statBadgeStyle('#f59e0b')}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>LIE</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{lie} {unit}</div>
+          <div style={statBadgeStyle('#10b981')}>
+            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>LIE</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{lie} {unit}</div>
           </div>
         )}
         {lse !== null && (
-          <div style={statBadgeStyle('#f59e0b')}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>LSE</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{lse} {unit}</div>
+          <div style={statBadgeStyle('#10b981')}>
+            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>LSE</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{lse} {unit}</div>
           </div>
         )}
       </div>
 
       <div style={statsGridStyle}>
         <div style={statBadgeStyle('#10b981')}>
-          <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>✅ Dentro de Especificación</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{((withinSpec / data.length) * 100).toFixed(1)}%</div>
+          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>✅ Dentro de Especificación</div>
+          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((withinSpec / data.length) * 100).toFixed(1)}%</div>
         </div>
         {lie !== null && (
           <div style={statBadgeStyle('#ef4444')}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>⚠️ Fuera (&lt; LIE)</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{((belowLIE / data.length) * 100).toFixed(2)}%</div>
+            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>⚠️ Fuera (&lt; LIE)</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((belowLIE / data.length) * 100).toFixed(2)}%</div>
           </div>
         )}
         {lse !== null && (
           <div style={statBadgeStyle('#ef4444')}>
-            <div style={{ fontSize: '0.65rem', color: 'var(--text-tertiary)', textTransform: 'uppercase' }}>⚠️ Fuera (&gt; LSE)</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>{((aboveLSE / data.length) * 100).toFixed(2)}%</div>
+            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>⚠️ Fuera (&gt; LSE)</div>
+            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((aboveLSE / data.length) * 100).toFixed(2)}%</div>
           </div>
         )}
       </div>
@@ -370,4 +412,4 @@ const ProcessHistogramSimple: React.FC<ProcessHistogramProps> = ({
   );
 };
 
-export default ProcessHistogramSimple;
+export default ProcessHistogramChartJS;
