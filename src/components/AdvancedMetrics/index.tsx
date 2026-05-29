@@ -8,7 +8,7 @@ import {
   getOCCurveData,
   calculateAllAdvancedMetrics
 } from '../../utils/advancedMetrics';
-
+// Con W y P_valor OK
 const MetricsContainer = styled.div`
   background: var(--bg-card);
   border-radius: 16px;
