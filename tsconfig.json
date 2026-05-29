@@ -8,6 +8,8 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "skipLibCheck": true,
-    "strict": false
+    "strict": false,
+    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "include": ["src/**/*", "src/types/**/*"]
   }
 }
