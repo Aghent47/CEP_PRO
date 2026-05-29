@@ -1,75 +1,59 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,
-  PointElement,
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-} from 'chart.js';
-import { Bar } from 'react-chartjs-2';
+import * as echarts from 'echarts';
+import styled from 'styled-components';
 
-// ============ REGISTRAR TODOS LOS CONTROLADORES ============
-// Es importante registrar LineElement para que funcione el tipo 'line'
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  LineElement,    // ← Necesario para gráficos de línea
-  PointElement,   // ← Necesario para puntos
-  Title,
-  Tooltip,
-  Legend,
-  Filler
-);
-// ========================================================
+const ChartContainer = styled.div`
+  background: var(--bg-card);
+  border-radius: 16px;
+  padding: 1.5rem;
+  border: 1px solid var(--border-color);
+  margin-bottom: 2rem;
+`;
 
-// Estilos en línea
-const containerStyle: React.CSSProperties = {
-  background: '#1a2235',
-  borderRadius: '16px',
-  padding: '1.5rem',
-  border: '1px solid #2a3448',
-  marginBottom: '2rem'
-};
+const Title = styled.h4`
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+`;
 
-const titleStyle: React.CSSProperties = {
-  color: '#e8edf5',
-  fontSize: '0.875rem',
-  fontWeight: 600,
-  textTransform: 'uppercase',
-  letterSpacing: '0.05em',
-  marginBottom: '1rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '0.5rem'
-};
+const ChartWrapper = styled.div`
+  width: 100%;
+  height: 450px;
+`;
 
-const chartWrapperStyle: React.CSSProperties = {
-  width: '100%',
-  height: '450px',
-  position: 'relative'
-};
+const StatsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-color);
+`;
 
-const statsGridStyle: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-  gap: '1rem',
-  marginTop: '1rem',
-  paddingTop: '1rem',
-  borderTop: '1px solid #2a3448'
-};
-
-const statBadgeStyle = (color: string): React.CSSProperties => ({
-  background: `${color}15`,
-  borderLeft: `3px solid ${color}`,
-  padding: '0.5rem',
-  borderRadius: '8px'
-});
+const StatBadge = styled.div<{ color: string }>`
+  background: ${props => `${props.color}15`};
+  border-left: 3px solid ${props => props.color};
+  padding: 0.5rem;
+  border-radius: 8px;
+  
+  .label {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+  }
+  
+  .value {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+`;
 
 interface ProcessHistogramProps {
   data: number[];
@@ -82,7 +66,7 @@ interface ProcessHistogramProps {
   title?: string;
 }
 
-const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
+const ProcessHistogramECharts: React.FC<ProcessHistogramProps> = ({
   data,
   mean,
   sigma,
@@ -92,26 +76,26 @@ const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
   unit,
   title = "Distribución del Proceso vs Especificaciones"
 }) => {
-  const chartRef = useRef<any>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const chartRef = useRef<HTMLDivElement>(null);
+  const chartInstance = useRef<echarts.ECharts | null>(null);
 
   if (!data || data.length === 0) return null;
   if (!sigma || sigma <= 0) return null;
 
-  // ============ 1. PREPARAR HISTOGRAMA ============
+  // ============ 1. CALCULAR HISTOGRAMA ============
   const numBins = Math.min(15, Math.max(8, Math.ceil(Math.sqrt(data.length))));
   const minVal = Math.min(...data);
   const maxVal = Math.max(...data);
   const binWidth = (maxVal - minVal) / numBins;
 
-  const labels: string[] = [];
+  const binCenters: number[] = [];
   const frequencies: number[] = [];
 
   for (let i = 0; i < numBins; i++) {
     const binStart = minVal + i * binWidth;
     const binEnd = binStart + binWidth;
     const binCenter = (binStart + binEnd) / 2;
-    labels.push(binCenter.toFixed(3));
+    binCenters.push(binCenter);
     const count = data.filter(v => v >= binStart && v < binEnd).length;
     frequencies.push(count);
   }
@@ -125,192 +109,320 @@ const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
     return (1 / (sig * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
   };
 
-  const binCenters = labels.map(l => parseFloat(l));
-  const curveValues = binCenters.map(x => normalPDF(x, mean, sigma));
+  // Generar curva continua (más puntos para suavidad)
+  const curveStart = mean - 4 * sigma;
+  const curveEnd = mean + 4 * sigma;
+  const curveStep = (curveEnd - curveStart) / 200;
   
-  const maxCurve = Math.max(...curveValues);
-  const scaleFactor = maxFreq / maxCurve * 0.8;
-  const scaledCurve = curveValues.map(v => v * scaleFactor);
+  const curveX: number[] = [];
+  const curveYDensity: number[] = [];
+  
+  for (let x = curveStart; x <= curveEnd; x += curveStep) {
+    curveX.push(x);
+    curveYDensity.push(normalPDF(x, mean, sigma));
+  }
+  
+  const maxDensity = Math.max(...curveYDensity);
+  
+  // Escalar curva para que sea visible (70% de la altura máxima del histograma)
+  const scaleFactor = maxFreq / maxDensity * 0.7;
+  const curveY = curveYDensity.map(y => y * scaleFactor);
+  
+  // ============ 3. LÍMITES DEL GRÁFICO ============
+  let xAxisMin = Math.min(curveStart, minVal - binWidth);
+  let xAxisMax = Math.max(curveEnd, maxVal + binWidth);
+  
+  // Añadir margen adicional
+  const xRange = xAxisMax - xAxisMin;
+  xAxisMin = xAxisMin - xRange * 0.05;
+  xAxisMax = xAxisMax + xRange * 0.05;
+  
+  if (lie !== null && lie < xAxisMin) xAxisMin = lie - sigma;
+  if (lse !== null && lse > xAxisMax) xAxisMax = lse + sigma;
+  
+  // Forzar un rango mínimo para que la curva sea visible
+  const finalRange = xAxisMax - xAxisMin;
+  if (finalRange < 0.5) {
+    const center = (xAxisMin + xAxisMax) / 2;
+    xAxisMin = center - 0.6;
+    xAxisMax = center + 0.6;
+  }
+  
+  const yAxisMax = Math.max(maxFreq, Math.max(...curveY)) * 1.15;
 
-  console.log('=== CHART.JS DEBUG ===');
-  console.log('maxFreq:', maxFreq);
-  console.log('maxCurve:', maxCurve);
-  console.log('scaleFactor:', scaleFactor);
-  console.log('scaledCurve max:', Math.max(...scaledCurve));
+  useEffect(() => {
+    if (!chartRef.current) return;
 
-  // Configuración del gráfico - USANDO 'bar' y 'line' correctamente
-  const chartData: any = {
-    labels: labels,
-    datasets: [
+    if (chartInstance.current) {
+      chartInstance.current.dispose();
+    }
+
+    chartInstance.current = echarts.init(chartRef.current);
+
+    const series: any[] = [
       {
-        label: 'Histograma',
+        name: 'Histograma',
         type: 'bar',
         data: frequencies,
-        backgroundColor: 'rgba(59, 130, 246, 0.7)',
-        borderColor: 'rgba(59, 130, 246, 1)',
-        borderWidth: 1,
-        borderRadius: 4,
-        barPercentage: 0.9,
-        categoryPercentage: 1.0,
-        yAxisID: 'y',
-      },
-      {
-        label: 'Curva Normal (Campana de Gauss)',
-        type: 'line',
-        data: scaledCurve,
-        borderColor: '#ef4444',
-        backgroundColor: 'rgba(239, 68, 68, 0.1)',
-        borderWidth: 3,
-        fill: true,
-        tension: 0.3,
-        pointRadius: 0,
-        pointHoverRadius: 0,
-        yAxisID: 'y',
-      }
-    ]
-  };
-
-  const options: any = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      tooltip: {
-        mode: 'index',
-        intersect: false,
-        callbacks: {
-          label: function(context: any) {
-            const label = context.dataset.label;
-            const value = context.raw;
-            if (label === 'Histograma') {
-              const percentage = ((value / totalData) * 100).toFixed(1);
-              return `${label}: ${value} (${percentage}%)`;
-            }
-            return `${label}: ${value.toFixed(4)}`;
+        barWidth: '85%',
+        itemStyle: {
+          color: '#3b82f6',
+          borderRadius: [4, 4, 0, 0],
+          opacity: 0.7
+        },
+        label: { show: false },
+        tooltip: {
+          formatter: (params: any) => {
+            const binCenter = binCenters[params.dataIndex];
+            const percentage = ((params.value / totalData) * 100).toFixed(1);
+            return `<strong>📊 Histograma</strong><br/>Centro: ${binCenter.toFixed(3)} ${unit}<br/>Frecuencia: ${params.value} (${percentage}%)`;
           }
         }
       },
-      legend: {
-        position: 'top',
-        labels: { color: '#e8edf5', font: { size: 11 } }
-      }
-    },
-    scales: {
-      x: {
-        title: {
-          display: true,
-          text: `Valor (${unit})`,
-          color: '#8f9bb3',
-          font: { size: 11 }
+      {
+        name: 'Curva Normal',
+        type: 'line',
+        data: curveY,
+        smooth: true,
+        lineStyle: {
+          color: '#ef4444',
+          width: 3,
+          type: 'solid'
         },
-        ticks: { color: '#8f9bb3' },
-        grid: { color: '#1a2235' }
+        symbol: 'none',
+        areaStyle: {
+          color: 'rgba(239, 68, 68, 0.15)'
+        },
+        tooltip: {
+          formatter: (params: any) => {
+            const xValue = curveX[params.dataIndex];
+            return `<strong>📈 Curva Normal</strong><br/>Valor: ${xValue.toFixed(3)} ${unit}`;
+          }
+        }
       },
-      y: {
-        title: {
-          display: true,
-          text: 'Frecuencia / Densidad',
-          color: '#8f9bb3',
-          font: { size: 11 }
-        },
-        ticks: { color: '#8f9bb3' },
-        grid: { color: '#1a2235' },
-        min: 0,
-        max: Math.max(maxFreq, Math.max(...scaledCurve)) * 1.15
+      {
+        name: 'Media',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: mean }],
+          lineStyle: {
+            color: '#3b82f6',
+            width: 2.5,
+            type: 'solid'
+          },
+          label: {
+            formatter: `Media: ${mean.toFixed(3)} ${unit}`,
+            color: '#3b82f6',
+            position: 'middle',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
+        }
       }
+    ];
+
+    if (lie !== null) {
+      series.push({
+        name: 'LIE',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: lie }],
+          lineStyle: {
+            color: '#10b981',
+            width: 2.5,
+            type: 'dashed'
+          },
+          label: {
+            formatter: `LIE: ${lie} ${unit}`,
+            color: '#10b981',
+            position: 'start',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
+        }
+      });
     }
-  };
 
-  // Dibujar líneas verticales (LIE, LSE, Media, Nominal) usando canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const drawLines = () => {
-      const chart = chartRef.current;
-      if (!chart || !chart.scales) return;
-
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-
-      const xAxis = chart.scales.x;
-      const yAxis = chart.scales.y;
-      
-      ctx.save();
-      ctx.font = 'bold 11px monospace';
-      
-      const drawDashedLine = (xValue: number, color: string, label: string, yPos: number) => {
-        const x = xAxis.getPixelForValue(xValue);
-        if (x >= 0 && x <= chart.width) {
-          ctx.beginPath();
-          ctx.moveTo(x, yAxis.top);
-          ctx.lineTo(x, yAxis.bottom);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([8, 6]);
-          ctx.stroke();
-          
-          ctx.fillStyle = color;
-          ctx.fillText(label, x + 5, yPos);
+    if (lse !== null) {
+      series.push({
+        name: 'LSE',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: lse }],
+          lineStyle: {
+            color: '#10b981',
+            width: 2.5,
+            type: 'dashed'
+          },
+          label: {
+            formatter: `LSE: ${lse} ${unit}`,
+            color: '#10b981',
+            position: 'end',
+            fontWeight: 'bold'
+          },
+          symbol: 'none'
         }
-      };
-      
-      const drawSolidLine = (xValue: number, color: string, label: string) => {
-        const x = xAxis.getPixelForValue(xValue);
-        if (x >= 0 && x <= chart.width) {
-          ctx.beginPath();
-          ctx.moveTo(x, yAxis.top);
-          ctx.lineTo(x, yAxis.bottom);
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 2.5;
-          ctx.setLineDash([]);
-          ctx.stroke();
-          
-          ctx.fillStyle = color;
-          ctx.fillText(label, x + 5, yAxis.top + 20);
+      });
+    }
+
+    if (target !== null && target !== undefined) {
+      series.push({
+        name: 'Nominal',
+        type: 'line',
+        data: [],
+        markLine: {
+          data: [{ xAxis: target }],
+          lineStyle: {
+            color: '#8b5cf6',
+            width: 2,
+            type: 'dotted'
+          },
+          label: {
+            formatter: `Nominal: ${target} ${unit}`,
+            color: '#8b5cf6',
+            position: 'middle'
+          },
+          symbol: 'none'
         }
-      };
-      
-      const drawShadedArea = (startX: number, endX: number, color: string) => {
-        const x1 = xAxis.getPixelForValue(startX);
-        const x2 = xAxis.getPixelForValue(endX);
-        if (x1 >= 0 && x2 <= chart.width && x1 < x2) {
-          ctx.fillStyle = color;
-          ctx.fillRect(x1, yAxis.top, x2 - x1, yAxis.bottom - yAxis.top);
+      });
+    }
+
+    if (lie !== null) {
+      series.push({
+        name: 'Zona Fuera LIE',
+        type: 'line',
+        data: [],
+        markArea: {
+          data: [[{ xAxis: xAxisMin }, { xAxis: lie }]],
+          itemStyle: { color: 'rgba(239, 68, 68, 0.2)' },
+          label: { show: false }
         }
-      };
-      
-      ctx.setLineDash([8, 6]);
-      
-      const xMin = xAxis.min;
-      const xMax = xAxis.max;
-      
-      if (lie !== null) {
-        drawShadedArea(xMin, lie, 'rgba(239, 68, 68, 0.15)');
-        drawDashedLine(lie, '#10b981', `LIE: ${lie} ${unit}`, yAxis.top + 15);
+      });
+    }
+
+    if (lse !== null) {
+      series.push({
+        name: 'Zona Fuera LSE',
+        type: 'line',
+        data: [],
+        markArea: {
+          data: [[{ xAxis: lse }, { xAxis: xAxisMax }]],
+          itemStyle: { color: 'rgba(239, 68, 68, 0.2)' },
+          label: { show: false }
+        }
+      });
+    }
+
+    const legendData = ['Histograma', 'Curva Normal', 'Media'];
+    if (lie !== null) legendData.push('LIE');
+    if (lse !== null) legendData.push('LSE');
+    if (target !== null && target !== undefined) legendData.push('Nominal');
+
+    const option: echarts.EChartsOption = {
+      backgroundColor: 'transparent',
+      title: { show: false },
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'shadow' },
+        backgroundColor: 'rgba(26, 34, 53, 0.95)',
+        borderColor: '#2a3448',
+        borderWidth: 1,
+        textStyle: { color: '#e8edf5', fontSize: 12 }
+      },
+      grid: {
+        left: '8%',
+        right: '8%',
+        top: '15%',
+        bottom: '10%',
+        containLabel: true,
+        backgroundColor: 'rgba(26, 34, 53, 0.2)'
+      },
+      xAxis: {
+        name: `Valor (${unit})`,
+        type: 'value',
+        min: xAxisMin,
+        max: xAxisMax,
+        axisLabel: {
+          color: '#8f9bb3',
+          fontSize: 11,
+          formatter: (value: number) => value.toFixed(3)
+        },
+        axisLine: { lineStyle: { color: '#2a3448' } },
+        splitLine: { show: false }
+      },
+      yAxis: {
+        name: 'Frecuencia',
+        type: 'value',
+        min: 0,
+        max: yAxisMax,
+        axisLabel: { color: '#8f9bb3', fontSize: 11 },
+        axisLine: { lineStyle: { color: '#2a3448' } },
+        splitLine: { lineStyle: { color: '#1a2235', type: 'dashed' } }
+      },
+      dataZoom: [
+        {
+          type: 'slider',
+          start: 0,
+          end: 100,
+          bottom: 10,
+          height: 20,
+          handleSize: 16,
+          brushSelect: true,
+          labelPrecision: 3
+        },
+        {
+          type: 'inside',
+          start: 0,
+          end: 100,
+          zoomOnMouseWheel: true,
+          moveOnMouseMove: true
+        }
+      ],
+      series: series,
+      legend: {
+        data: legendData,
+        orient: 'horizontal',
+        left: 'left',
+        top: 0,
+        textStyle: { color: '#8f9bb3', fontSize: 11 },
+        itemWidth: 25,
+        itemHeight: 12
+      },
+      toolbox: {
+        feature: {
+          saveAsImage: { 
+            title: 'Guardar como imagen',
+            name: 'histograma_distribucion'
+          },
+          zoom: { 
+            title: { 
+              zoom: 'Zoom (arrastra para ampliar)',
+              back: 'Restablecer zoom'
+            }
+          },
+          restore: { title: 'Restablecer todo' },
+          dataZoom: { title: { zoom: 'Zoom con selector' } }
+        },
+        iconStyle: { borderColor: '#8f9bb3' }
       }
-      
-      if (lse !== null) {
-        drawShadedArea(lse, xMax, 'rgba(239, 68, 68, 0.15)');
-        drawDashedLine(lse, '#10b981', `LSE: ${lse} ${unit}`, yAxis.bottom - 10);
-      }
-      
-      if (target !== null && target !== undefined) {
-        drawDashedLine(target, '#8b5cf6', `Nominal: ${target} ${unit}`, yAxis.top + 40);
-      }
-      
-      drawSolidLine(mean, '#3b82f6', `Media: ${mean.toFixed(3)} ${unit}`);
-      
-      ctx.restore();
     };
-    
-    const timeout = setTimeout(() => {
-      drawLines();
-    }, 150);
-    
-    return () => clearTimeout(timeout);
-  }, [data, mean, sigma, lie, lse, target, unit, labels, frequencies]);
 
-  // Estadísticas
+    chartInstance.current.setOption(option);
+
+    const handleResize = () => {
+      chartInstance.current?.resize();
+    };
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chartInstance.current?.dispose();
+    };
+  }, [data, mean, sigma, lie, lse, target, unit, binCenters, frequencies, curveY, curveX, xAxisMin, xAxisMax, yAxisMax, totalData]);
+
   const withinSpec = data.filter(v => {
     if (lie !== null && v < lie) return false;
     if (lse !== null && v > lse) return false;
@@ -325,24 +437,14 @@ const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
     : 0;
 
   return (
-    <div style={containerStyle}>
-      <div style={titleStyle}>
-        <span>📊</span> {title}
-      </div>
-      
-      <div style={chartWrapperStyle}>
-        <canvas ref={canvasRef} style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', pointerEvents: 'none' }} />
-        <Bar 
-          ref={chartRef}
-          data={chartData} 
-          options={options}
-        />
-      </div>
+    <ChartContainer>
+      <Title>📊 {title}</Title>
+      <ChartWrapper ref={chartRef} />
       
       {lie !== null && lse !== null && (
         <div style={{ marginTop: '0.5rem', marginBottom: '0.5rem' }}>
           <div style={{ 
-            background: '#2a3448', 
+            background: 'var(--bg-secondary)', 
             borderRadius: '8px', 
             height: '8px', 
             overflow: 'hidden' 
@@ -354,62 +456,62 @@ const ProcessHistogramChartJS: React.FC<ProcessHistogramProps> = ({
               borderRadius: '8px'
             }} />
           </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem', fontSize: '0.65rem', color: '#8f9bb3' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.25rem', fontSize: '0.65rem', color: 'var(--text-tertiary)' }}>
             <span>📏 Consume {toleranceUsage.toFixed(1)}% de tolerancia</span>
             <span>{toleranceUsage > 80 ? '⚠️ Alto' : toleranceUsage > 60 ? '⚠️ Moderado' : '✓ Aceptable'}</span>
           </div>
         </div>
       )}
       
-      <div style={statsGridStyle}>
-        <div style={statBadgeStyle('#3b82f6')}>
-          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Media del Proceso</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{mean.toFixed(3)} {unit}</div>
-        </div>
-        <div style={statBadgeStyle('#ef4444')}>
-          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Sigma del Proceso</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{sigma.toFixed(4)} {unit}</div>
-        </div>
+      <StatsGrid>
+        <StatBadge color="#3b82f6">
+          <div className="label">Media del Proceso</div>
+          <div className="value">{mean.toFixed(3)} {unit}</div>
+        </StatBadge>
+        <StatBadge color="#ef4444">
+          <div className="label">Sigma del Proceso</div>
+          <div className="value">{sigma.toFixed(4)} {unit}</div>
+        </StatBadge>
         {target !== null && target !== undefined && (
-          <div style={statBadgeStyle('#8b5cf6')}>
-            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>Valor Nominal</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{target} {unit}</div>
-          </div>
+          <StatBadge color="#8b5cf6">
+            <div className="label">Valor Nominal</div>
+            <div className="value">{target} {unit}</div>
+          </StatBadge>
         )}
         {lie !== null && (
-          <div style={statBadgeStyle('#10b981')}>
-            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>LIE</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{lie} {unit}</div>
-          </div>
+          <StatBadge color="#10b981">
+            <div className="label">LIE</div>
+            <div className="value">{lie} {unit}</div>
+          </StatBadge>
         )}
         {lse !== null && (
-          <div style={statBadgeStyle('#10b981')}>
-            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>LSE</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{lse} {unit}</div>
-          </div>
+          <StatBadge color="#10b981">
+            <div className="label">LSE</div>
+            <div className="value">{lse} {unit}</div>
+          </StatBadge>
         )}
-      </div>
-
-      <div style={statsGridStyle}>
-        <div style={statBadgeStyle('#10b981')}>
-          <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>✅ Dentro de Especificación</div>
-          <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((withinSpec / data.length) * 100).toFixed(1)}%</div>
-        </div>
+      </StatsGrid>
+      
+      <StatsGrid>
+        <StatBadge color="#10b981">
+          <div className="label">✅ Dentro de Especificación</div>
+          <div className="value">{((withinSpec / data.length) * 100).toFixed(1)}%</div>
+        </StatBadge>
         {lie !== null && (
-          <div style={statBadgeStyle('#ef4444')}>
-            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>⚠️ Fuera (&lt; LIE)</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((belowLIE / data.length) * 100).toFixed(2)}%</div>
-          </div>
+          <StatBadge color="#ef4444">
+            <div className="label">⚠️ Fuera (&lt; LIE)</div>
+            <div className="value">{((belowLIE / data.length) * 100).toFixed(2)}%</div>
+          </StatBadge>
         )}
         {lse !== null && (
-          <div style={statBadgeStyle('#ef4444')}>
-            <div style={{ fontSize: '0.65rem', color: '#8f9bb3', textTransform: 'uppercase' }}>⚠️ Fuera (&gt; LSE)</div>
-            <div style={{ fontSize: '1rem', fontWeight: 700, color: '#e8edf5' }}>{((aboveLSE / data.length) * 100).toFixed(2)}%</div>
-          </div>
+          <StatBadge color="#ef4444">
+            <div className="label">⚠️ Fuera (&gt; LSE)</div>
+            <div className="value">{((aboveLSE / data.length) * 100).toFixed(2)}%</div>
+          </StatBadge>
         )}
-      </div>
-    </div>
+      </StatsGrid>
+    </ChartContainer>
   );
 };
 
-export default ProcessHistogramChartJS;
+export default ProcessHistogramECharts;
